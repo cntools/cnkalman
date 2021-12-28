@@ -1,6 +1,5 @@
 #include <vector>
 #include <cmath>
-#include <boost/tuple/tuple.hpp>
 //#include <linmath.h>
 
 #include "models/LinearPoseVel.h"

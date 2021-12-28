@@ -3,7 +3,7 @@ include_directories(../include)
 include_directories(.)
 
 add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h)
-target_link_libraries(TestKalmanModels cnkalman boost_iostreams boost_system boost_filesystem)
+target_link_libraries(TestKalmanModels cnkalman)
 
 add_test(NAME runbenchmarks
         COMMAND ${CMAKE_COMMAND}
