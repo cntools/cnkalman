@@ -1,16 +1,24 @@
 #include <vector>
 #include <cmath>
-//#include <linmath.h>
-
-#include "models/LinearPoseVel.h"
-#include "models/EggLandscape.h"
-#include "models/BikeLandmarks.h"
 
 #include "cnkalman/kalman.h"
+#include "cnkalman/model.h"
 
-#include <sciplot/sciplot.hpp>
 #include <iostream>
 #include <cnmatrix/cn_matrix.h>
+#include <fstream>
+
+#if HAS_SCIPLOT
+#include <sciplot/sciplot.hpp>
+
+namespace sciplot::internal {
+    template<>
+    auto escapeIfNeeded<std::tuple<double, double>>(const std::tuple<double, double> &val) {
+        return internal::str(std::get<0>(val)) + " " + internal::str(std::get<1>(val));
+    }
+}
+
+#endif
 
 static inline FLT linmath_enforce_range(FLT v, FLT mn, FLT mx) {
     if (v < mn)
@@ -115,13 +123,8 @@ static inline void write_matrix(FILE* f, const char* name, const CnMat* m) {
     }
     fprintf(f, "],\n");
 }
-namespace sciplot::internal {
-    template<>
-    auto escapeIfNeeded<std::tuple<double, double>>(const std::tuple<double, double> &val) {
-        return internal::str(std::get<0>(val)) + " " + internal::str(std::get<1>(val));
-    }
-}
 
+#ifdef HAS_SCIPLOT
 static inline void plot_cov(sciplot::Plot& map, const cnkalman::KalmanModel& model, FLT deviations, const std::string& color="red") {
     CN_CREATE_STACK_MAT(Pp, 2, 2);
     CN_CREATE_STACK_MAT(Evec, 2, 2);
@@ -140,12 +143,12 @@ static inline void plot_cov(sciplot::Plot& map, const cnkalman::KalmanModel& mod
        " angle " << angle << " front\n";
     map.gnuplot(ss.str());
 }
-
+#endif
 void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int ellipse_step = 20, bool show = false, bool bulk_update = false) {
-    //show = false;
+#ifdef HAS_SCIPLOT
     sciplot::Plot plot;
     sciplot::Plot map;
-
+#endif
     std::vector<std::vector<std::vector<FLT>>> observations;
     std::vector<std::vector<FLT>> Xs;
     std::vector<std::vector<FLT>> Xfs;
@@ -165,14 +168,16 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
 
     //model.kalman_state.debug_transition_jacobian = 1;
 
+#ifdef HAS_SCIPLOT
     plot.gnuplot("set title \"" + model.name + "\"");
     map.gnuplot("set title \"" + model.name+ "\"");
     map.palette("");
-    FLT range[4] = { INFINITY, -INFINITY, INFINITY, -INFINITY};
 
     map.size(1600,1600);
     map.gnuplot("set size square");
     map.border().none();
+#endif
+    FLT range[4] = { INFINITY, -INFINITY, INFINITY, -INFINITY};
 
     std::vector<std::vector<std::vector<double>>> covs;
     std::vector<double> norm;
@@ -203,9 +208,11 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
 
         model.update(t);
 
+#ifdef HAS_SCIPLOT
         if(i % ellipse_step == 0) {
             plot_cov(map, model, deviations, "blue");
         }
+#endif
 
         FLT norm = 0, onorm = 0;
 
@@ -247,10 +254,12 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
 
         error.emplace_back(cnDistance(&X, model.stateM));
 
+#ifdef HAS_SCIPLOT
         if(i % ellipse_step == 0)
         {
             plot_cov(map, model, deviations);
         }
+#endif
         covs.emplace_back(cnMatToVectorVector(model.kalman_state.P));
     }
 
@@ -269,6 +278,7 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
     f << "}";
 
 
+#ifdef HAS_SCIPLOT
     plot.size(1600,1200);
     plot.drawWithVecs("lines", orignorms).label("Orig");
     plot.drawWithVecs("lines", bestnorms).label("Best");
@@ -315,15 +325,13 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
     map.xrange(range[0], range[1]);
     map.yrange(range[2], range[3]);
 
-    std::vector<double> landmarks_x = {5, 10, 15}, landmarks_y = {10, 5, 15};
-
-    map.drawWithVecs("points", landmarks_x, landmarks_y).label("Landmarks");
     map.drawWithVecs("lines", pts_GT).label("GT");
     map.drawWithVecs("lines", pts_Filtered).label("Filter");
 
     if(show)
         map.show();
     map.save(model.name + ".png");
+#endif
 
     for(auto& R : Rs)
         free(R.data);

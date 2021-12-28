@@ -4,8 +4,6 @@
 
 #include "ModelRunner.h"
 
-#include <sciplot/sciplot.hpp>
-
 int main() {
     BikeLandmarks bikeModel;
     EggLandscapeProblem eggModel;

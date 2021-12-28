@@ -4,17 +4,19 @@ include_directories(.)
 
 find_package(sciplot)
 if(sciplot_FOUND)
-    add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h)
-    target_link_libraries(TestKalmanModels cnkalman)
-
-    add_test(NAME runbenchmarks
-            COMMAND ${CMAKE_COMMAND}
-            -DTEST_KALMAN_MODELS=$<TARGET_FILE:TestKalmanModels>
-            -DBENCHMARK_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/filterpy/benchmark.py
-            -P ${CMAKE_CURRENT_SOURCE_DIR}/runbenchmarks.cmake)
-
-    add_test(NAME TestKalmanModels COMMAND TestKalmanModels)
+    add_compile_definitions(HAS_SCIPLOT)
 endif()
+add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h)
+target_link_libraries(TestKalmanModels cnkalman)
+
+add_test(NAME runbenchmarks
+        COMMAND ${CMAKE_COMMAND}
+        -DTEST_KALMAN_MODELS=$<TARGET_FILE:TestKalmanModels>
+        -DBENCHMARK_SCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/filterpy/benchmark.py
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/runbenchmarks.cmake)
+
+add_test(NAME TestKalmanModels COMMAND TestKalmanModels)
+
 
 find_package(GTest)
 if(GTest_FOUND)
