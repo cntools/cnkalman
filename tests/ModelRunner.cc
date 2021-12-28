@@ -212,7 +212,7 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
 
         std::vector<std::vector<FLT>> obs;
         std::vector<CnMat> Zs;
-        for(int j = 0;j < model.measurementModels.size();j++) {
+        for(int j = 0;j < (int)model.measurementModels.size();j++) {
             auto& measModel = model.measurementModels[j];
             auto Z = cnMatCalloc(measModel->meas_cnt, 1);
             measModel->sample_measurement(X, Z, Rs[j]);
@@ -223,7 +223,7 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
         if(bulk_update) {
             model.bulk_update(t, Zs, Rs);
         } else {
-            for(int j = 0;j < model.measurementModels.size();j++) {
+            for(int j = 0;j < (int)model.measurementModels.size();j++) {
                 auto& measModel = model.measurementModels[j];
                 auto Z = Zs[j];
 
@@ -233,7 +233,7 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
             }
         }
 
-        for(int j = 0;j < model.measurementModels.size();j++) {
+        for(int j = 0;j < (int)model.measurementModels.size();j++) {
             auto& Z = Zs[j];
             free(Z.data);
         }

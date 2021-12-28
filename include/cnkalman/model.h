@@ -8,7 +8,7 @@
 
 namespace cnkalman {
     struct KalmanModel;
-    struct KalmanMeasurementModel {
+    struct CN_EXPORT_CLASS KalmanMeasurementModel {
         size_t meas_cnt;
         cnkalman_meas_model meas_mdl = {};
 
@@ -28,7 +28,7 @@ namespace cnkalman {
         }
     };
 
-    struct KalmanModel {
+    struct CN_EXPORT_CLASS KalmanModel {
         std::string name;
 
         cnkalman_state_t kalman_state = {};
@@ -42,7 +42,8 @@ namespace cnkalman {
         KalmanModel(const std::string& name, size_t state_cnt);
         virtual ~KalmanModel();
 
-        virtual void predict(FLT dt, const CnMat& x0, CnMat* x1, CnMat* cF = 0) = 0;
+		virtual void predict(FLT dt, const CnMat& x0, CnMat* x1, CnMat* cF) = 0;
+		void predict(FLT dt, const CnMat& x0, CnMat* x1) { return predict(dt, x0, x1, 0); }
 
         virtual void process_noise(FLT dt, const struct CnMat &x, struct CnMat &Q_out) = 0;
 
@@ -53,13 +54,13 @@ namespace cnkalman {
         void bulk_update(FLT t, const std::vector<CnMat>& Zs, const std::vector<CnMat>& Rs);
     };
 
-    struct KalmanLinearPredictionModel : public KalmanModel {
+    struct CN_EXPORT_CLASS KalmanLinearPredictionModel : public KalmanModel {
         virtual const CnMat& F() const = 0;
         KalmanLinearPredictionModel(const std::string &name, size_t stateCnt);
         void predict(FLT dt, const CnMat& x0, CnMat* x1, CnMat* cF) override;
     };
 
-    struct KalmanLinearMeasurementModel : public KalmanMeasurementModel {
+    struct CN_EXPORT_CLASS KalmanLinearMeasurementModel : public KalmanMeasurementModel {
         CnMat H;
 
         KalmanLinearMeasurementModel(KalmanModel* kalmanModel, const std::string& name, const CnMat& H);

@@ -21,6 +21,9 @@
 
 void cnkalman_set_logging_level(cnkalman_state_t *k, int v) { k->log_level = v; }
 
+void cnkalman_linear_update(struct CnMat *F, const struct CnMat *x0, struct CnMat *x1) {
+	cnGEMM(F, x0, 1, 0, 0, x1, 0);
+}
 void cn_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines) {
 	if (k->log_level < ll) {
 		return;
@@ -62,9 +65,6 @@ CN_EXPORT_FUNCTION void cnkalman_state_reset(cnkalman_state_t *k) {
 	cn_print_mat(k, "initial Pk_k", &k->P, true);
 }
 
-static void transition_is_identity(void * user, FLT t, struct CnMat *f_out, const struct CnMat *x0) {
-	cn_eye(f_out, 0);
-}
 CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char *name,
 												   cnkalman_meas_model_t *mk, kalman_measurement_model_fn_t Hfn) {
 	memset(mk, 0, sizeof(*mk));
@@ -451,7 +451,7 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
     int state_cnt = k->state_cnt;
 
     FLT dt = t - k->t;
-    assert(dt >= 0);
+    //assert(dt >= 0);
 
     FLT result = 0;
 

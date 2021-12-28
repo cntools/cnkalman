@@ -68,8 +68,7 @@ enum cnkalman_update_extended_termination_reason {
 	cnkalman_update_extended_termination_reason_mtol,
 	cnkalman_update_extended_termination_reason_MAX
 };
-const char *
-cnkalman_update_extended_termination_reason_to_str(enum cnkalman_update_extended_termination_reason reason);
+CN_EXPORT_FUNCTION const char * cnkalman_update_extended_termination_reason_to_str(enum cnkalman_update_extended_termination_reason reason);
 
 typedef struct cnkalman_update_extended_total_stats_t {
 	FLT bestnorm_acc, orignorm_acc, bestnorm_meas_acc, bestnorm_delta_acc, orignorm_meas_acc;
@@ -216,6 +215,7 @@ CN_EXPORT_FUNCTION void cnkalman_state_free(cnkalman_state_t *k);
 CN_EXPORT_FUNCTION void cnkalman_set_P(cnkalman_state_t *k, const FLT *d);
 CN_EXPORT_FUNCTION void cnkalman_set_logging_level(cnkalman_state_t *k, int verbosity);
 
+CN_EXPORT_FUNCTION void cnkalman_linear_update(struct CnMat *F, const struct CnMat *x0, struct CnMat *x1);
 
 #ifdef __cplusplus
 }

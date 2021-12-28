@@ -2,7 +2,6 @@
 #include "cnkalman/model.h"
 namespace cnkalman {
 
-
     bool KalmanMeasurementModel::residual(const CnMat& Z, const CnMat& x_t, CnMat* y, CnMat* H_k) {
         CN_CREATE_STACK_VEC(pz, Z.rows);
         auto rtn = predict_measurement(x_t, &pz, H_k);
@@ -177,13 +176,13 @@ namespace cnkalman {
         CN_CREATE_STACK_VEC(Z, meas_cnt);
         CN_CREATE_STACK_MAT(R, meas_cnt, meas_cnt);
         int meas_idx = 0;
-        for(int i = 0;i < Zs.size();i++) {
+        for(int i = 0;i < (int)Zs.size();i++) {
             cnCopyROI(&Zs[i], &Z, meas_idx, 0);
             cnCopyROI(&Rs[i], &R, meas_idx, meas_idx);
             meas_idx += (int)measurementModels[i]->meas_cnt;
         }
 
-        cnkalman_meas_model bulk = { 0 };
+        cnkalman_meas_model bulk = { };
         cnkalman_meas_model_init(&kalman_state, "bulk", &bulk, bulk_update_fn);
         cnkalman_meas_model_predict_update(t, &bulk, this, &Z, &R);
     }
