@@ -86,7 +86,7 @@ struct BikeLandmarks : public cnkalman::KalmanModel {
         auto V = cnMat(3, 2, _V);
 
         FLT _M[] = {
-                v_std*v*v, 0,
+                v_std*v_std, 0,
                 0, alpha_std*alpha_std
         };
         auto M = cnMat(2, 2, _M);

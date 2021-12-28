@@ -50,7 +50,7 @@ class RobotEKF(EKF):
         V = array(self.V_j.evalf(subs=self.subs)).astype(float)
 
         # covariance of motion noise in control space
-        M = array([[self.std_vel*u[0]**2, 0],
+        M = array([[self.std_vel**2, 0],
                    [0, self.std_steer**2]])
 
         self.P = F @ self.P @ F.T + V @ M @ V.T
