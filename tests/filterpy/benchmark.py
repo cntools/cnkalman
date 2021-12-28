@@ -117,8 +117,9 @@ plt.legend()
 if '--show' in sys.argv:
     plt.show()
 
-err = np.linalg.norm(Xf - Xs.reshape(Xf.shape)) + math.sqrt(pError)
-print(err, math.sqrt(pError))
-err += math.sqrt(pError)
+err = np.linalg.norm(Xf - Xs.reshape(Xf.shape)) / Xf.shape[0]
+print(err, math.sqrt(pError) / Xf.shape[0])
 
-sys.exit(0 if err < 1e-3 else -1)
+has_error = math.sqrt(pError) / Xf.shape[0] > 1e-3 or err > 1e-3
+
+sys.exit(-1 if has_error else 0)
