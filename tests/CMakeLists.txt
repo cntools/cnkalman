@@ -9,6 +9,9 @@ endif()
 add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h)
 target_link_libraries(TestKalmanModels cnkalman)
 
+add_executable(kalman_example kalman_example.c)
+target_link_libraries(kalman_example cnkalman)
+
 add_test(NAME runbenchmarks
         COMMAND ${CMAKE_COMMAND}
         -DTEST_KALMAN_MODELS=$<TARGET_FILE:TestKalmanModels>
