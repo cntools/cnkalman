@@ -1,6 +1,5 @@
 #pragma once
 
-#include "model.h"
 #include <cnkalman/model.h>
 
 struct LinearPoseVel : public cnkalman::KalmanModel {
@@ -13,7 +12,7 @@ struct LinearPoseVel : public cnkalman::KalmanModel {
         CnMat H = cnMat(3, 4, _H);
 
         measurementModels.emplace_back(std::make_unique<cnkalman::KalmanLinearMeasurementModel>(this, "meas", H));
-        survive_kalman_state_reset(&kalman_state);
+        cnkalman_state_reset(&kalman_state);
     }
 
     FLT _F[16] = {

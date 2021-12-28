@@ -3,12 +3,11 @@
 #include <boost/tuple/tuple.hpp>
 //#include <linmath.h>
 
-#include "model.h"
 #include "models/LinearPoseVel.h"
 #include "models/EggLandscape.h"
 #include "models/BikeLandmarks.h"
 
-#include "cnkalman/survive_kalman.h"
+#include "cnkalman/kalman.h"
 
 #include <sciplot/sciplot.hpp>
 #include <iostream>

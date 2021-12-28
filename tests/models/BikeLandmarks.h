@@ -1,5 +1,4 @@
 #include <cnkalman/model.h>
-#include "../model.h"
 
 struct LandmarkMeasurement : public cnkalman::KalmanMeasurementModel {
     FLT px, py;

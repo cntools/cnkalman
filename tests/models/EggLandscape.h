@@ -1,6 +1,5 @@
 #pragma once
 
-#include "model.h"
 #include <cnkalman/model.h>
 
 struct EggLandscapeMeas : public cnkalman::KalmanMeasurementModel {
@@ -43,7 +42,7 @@ struct EggLandscapeProblem : public cnkalman::KalmanModel {
     EggLandscapeProblem() : cnkalman::KalmanModel("EggLandscape", 4) {
         state_cnt = 4;
         measurementModels.emplace_back(std::make_unique<EggLandscapeMeas>(this, "meas"));
-        survive_kalman_state_reset(&kalman_state);
+        cnkalman_state_reset(&kalman_state);
 
         state[0] = .1; state[1] = .1;
     }

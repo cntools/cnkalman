@@ -17,12 +17,12 @@ namespace cnkalman {
     }
 
     KalmanMeasurementModel::KalmanMeasurementModel(KalmanModel* kalmanModel, const std::string &name, size_t meas_cnt) : meas_cnt(meas_cnt) {
-        survive_kalman_meas_model_init(&kalmanModel->kalman_state, "meas", &meas_mdl, kalman_measurement);
+        cnkalman_meas_model_init(&kalmanModel->kalman_state, "meas", &meas_mdl, kalman_measurement);
     }
 
-    survive_kalman_update_extended_stats_t KalmanMeasurementModel::update(double t, const CnMat &Z, CnMat &R) {
-        struct survive_kalman_update_extended_stats_t stats = {};
-        survive_kalman_meas_model_predict_update_stats(t, &meas_mdl, this, &Z, &R, &stats);
+    cnkalman_update_extended_stats_t KalmanMeasurementModel::update(double t, const CnMat &Z, CnMat &R) {
+        struct cnkalman_update_extended_stats_t stats = {};
+        cnkalman_meas_model_predict_update_stats(t, &meas_mdl, this, &Z, &R, &stats);
         return stats;
     }
 
@@ -30,7 +30,7 @@ namespace cnkalman {
         predict_measurement(x, &Z, 0);
 
         CN_CREATE_STACK_MAT(RL, meas_cnt, meas_cnt);
-        cnSqRoot(&R, &RL);
+        cnSqRootSymmetric(&R, &RL);
         CN_CREATE_STACK_MAT(X, meas_cnt, 1);
         CN_CREATE_STACK_MAT(Xs, meas_cnt, 1);
         cnRand(&X, 0, 1);
@@ -46,7 +46,7 @@ namespace cnkalman {
         return os;
     }
 
-    static void kalman_predict_bounce(FLT dt, const struct survive_kalman_state_s *k, const struct CnMat *x0,
+    static void kalman_predict_bounce(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0,
                                       struct CnMat *x1) {
         auto *self = static_cast<cnkalman::KalmanModel *>(k->user);
         self->predict(dt, *x0, *x1);
@@ -63,7 +63,7 @@ namespace cnkalman {
     }
 
     KalmanModel::KalmanModel(const std::string& name, size_t state_cnt) : name(name), state_cnt(state_cnt) {
-        survive_kalman_state_init(&kalman_state, state_cnt, transition_bounce, kalman_process_noise_fn, this, 0);
+        cnkalman_state_init(&kalman_state, state_cnt, transition_bounce, kalman_process_noise_fn, this, 0);
         kalman_state.Predict_fn = kalman_predict_bounce;
         state = kalman_state.state.data;
         stateM = &kalman_state.state;
@@ -78,14 +78,14 @@ namespace cnkalman {
 
         predict(dt, x0, x1);
         process_noise(dt, x1, Q);
-        cnSqRoot(&Q, &QL);
+        cnSqRootSymmetric(&Q, &QL);
         cnRand(&X, 0, 1);
         cnGEMM(&QL, &X, 1, 0, 0, &Xs, (cnGEMMFlags)0);
         cn_elementwise_add(&x1, &x1, &Xs);
     }
 
     void KalmanModel::update(double t) {
-        survive_kalman_predict_state(t, &kalman_state);
+        cnkalman_predict_state(t, &kalman_state);
     }
 
     bool KalmanLinearMeasurementModel::predict_measurement(const CnMat &x, CnMat *z, CnMat *h) {
@@ -121,7 +121,7 @@ namespace cnkalman {
     }
 
     KalmanModel::~KalmanModel() {
-        survive_kalman_state_free(&this->kalman_state);
+        cnkalman_state_free(&this->kalman_state);
     }
 
     void KalmanModel::predict(double dt, const CnMat &x0, CnMat &x1) {
@@ -188,8 +188,8 @@ namespace cnkalman {
             meas_idx += (int)measurementModels[i]->meas_cnt;
         }
 
-        survive_kalman_meas_model bulk = { 0 };
-        survive_kalman_meas_model_init(&kalman_state, "bulk", &bulk, bulk_update_fn);
-        survive_kalman_meas_model_predict_update(t, &bulk, this, &Z, &R);
+        cnkalman_meas_model bulk = { 0 };
+        cnkalman_meas_model_init(&kalman_state, "bulk", &bulk, bulk_update_fn);
+        cnkalman_meas_model_predict_update(t, &bulk, this, &Z, &R);
     }
 }

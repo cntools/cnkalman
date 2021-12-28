@@ -9,8 +9,7 @@ extern "C" {
 #endif
 
 /**
- * This file contains a generic kalman implementation. survive_kalman_tracker.h/c fills in the actual lighthouse
- * data model.
+ * This file contains a generic kalman implementation.
  *
  * This implementation tries to use the same nomenclature as:
  * https://en.wikipedia.org/wiki/Kalman_filter#Underlying_dynamical_system_model and
@@ -32,16 +31,16 @@ extern "C" {
 
  */
 
-struct survive_kalman_state_s;
+struct cnkalman_state_s;
 
 // Generates the transition matrix F
 typedef void (*kalman_transition_fn_t)(void *user, FLT dt, struct CnMat *f_out, const struct CnMat *x0);
-void kalman_linear_predict(FLT t, const struct survive_kalman_state_s *k, const CnMat *x_t0_t0, CnMat *x_t0_t1);
+void kalman_linear_predict(FLT t, const struct cnkalman_state_s *k, const CnMat *x_t0_t0, CnMat *x_t0_t1);
 
 typedef void (*kalman_normalize_fn_t)(void *user, struct CnMat *x);
 
 // Given state x0 and time delta; gives the new state x1. For a linear model, this is just x1 = F * x0
-typedef void (*kalman_predict_fn_t)(FLT dt, const struct survive_kalman_state_s *k, const struct CnMat *x0,
+typedef void (*kalman_predict_fn_t)(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0,
 									struct CnMat *x1);
 
 // Given time and current state, generate the process noise Q_k.
@@ -63,36 +62,36 @@ typedef struct term_criteria_t {
 	FLT mtol;
 } term_criteria_t;
 
-enum survive_kalman_update_extended_termination_reason {
-	survive_kalman_update_extended_termination_reason_none = 0,
-	survive_kalman_update_extended_termination_reason_invalid_jacobian,
-	survive_kalman_update_extended_termination_reason_maxiter,
-	survive_kalman_update_extended_termination_reason_xtol,
-	survive_kalman_update_extended_termination_reason_step,
-	survive_kalman_update_extended_termination_reason_mtol,
-	survive_kalman_update_extended_termination_reason_MAX
+enum cnkalman_update_extended_termination_reason {
+	cnkalman_update_extended_termination_reason_none = 0,
+	cnkalman_update_extended_termination_reason_invalid_jacobian,
+	cnkalman_update_extended_termination_reason_maxiter,
+	cnkalman_update_extended_termination_reason_xtol,
+	cnkalman_update_extended_termination_reason_step,
+	cnkalman_update_extended_termination_reason_mtol,
+	cnkalman_update_extended_termination_reason_MAX
 };
 const char *
-survive_kalman_update_extended_termination_reason_to_str(enum survive_kalman_update_extended_termination_reason reason);
+cnkalman_update_extended_termination_reason_to_str(enum cnkalman_update_extended_termination_reason reason);
 
-typedef struct survive_kalman_update_extended_total_stats_t {
+typedef struct cnkalman_update_extended_total_stats_t {
 	FLT bestnorm_acc, orignorm_acc, bestnorm_meas_acc, bestnorm_delta_acc, orignorm_meas_acc;
 	int total_iterations, total_fevals, total_hevals;
 	int total_runs;
 	int total_failures;
 	FLT step_acc;
 	int step_cnt;
-	size_t stop_reason_counts[survive_kalman_update_extended_termination_reason_MAX];
-} survive_kalman_update_extended_total_stats_t;
+	size_t stop_reason_counts[cnkalman_update_extended_termination_reason_MAX];
+} cnkalman_update_extended_total_stats_t;
 
-struct survive_kalman_update_extended_stats_t {
+struct cnkalman_update_extended_stats_t {
 	FLT bestnorm, bestnorm_meas, bestnorm_delta;
 	FLT orignorm, orignorm_meas;
 	int iterations;
 	int fevals, hevals;
-	enum survive_kalman_update_extended_termination_reason stop_reason;
+	enum cnkalman_update_extended_termination_reason stop_reason;
 
-	survive_kalman_update_extended_total_stats_t *total_stats;
+	cnkalman_update_extended_total_stats_t *total_stats;
 };
 
 /**
@@ -106,7 +105,7 @@ enum cnkalman_jacobian_mode {
     cnkalman_jacobian_mode_debug = -1,
 };
 
-typedef struct survive_kalman_state_s {
+typedef struct cnkalman_state_s {
 	// The number of states stored. For instance, something that tracked position and velocity would have 6 states --
 	// [x, y, z, vx, vy, vz]
 	int state_cnt;
@@ -133,11 +132,11 @@ typedef struct survive_kalman_state_s {
 
 	int log_level;
 	void *datalog_user;
-	void (*datalog)(struct survive_kalman_state_s *state, const char *name, const FLT *v, size_t length);
-} survive_kalman_state_t;
+	void (*datalog)(struct cnkalman_state_s *state, const char *name, const FLT *v, size_t length);
+} cnkalman_state_t;
 
-typedef struct survive_kalman_meas_model {
-	survive_kalman_state_t *k;
+typedef struct cnkalman_meas_model {
+	cnkalman_state_t *k;
     enum cnkalman_jacobian_mode meas_jacobian_mode;
 
 	const char *name;
@@ -146,20 +145,14 @@ typedef struct survive_kalman_meas_model {
 	bool adaptive;
 
 	struct term_criteria_t term_criteria;
-	survive_kalman_update_extended_total_stats_t stats;
-} survive_kalman_meas_model_t;
+	cnkalman_update_extended_total_stats_t stats;
+} cnkalman_meas_model_t;
 
-CN_EXPORT_FUNCTION FLT survive_kalman_meas_model_predict_update_stats(FLT t, survive_kalman_meas_model_t *mk, void *user,
+CN_EXPORT_FUNCTION FLT cnkalman_meas_model_predict_update_stats(FLT t, cnkalman_meas_model_t *mk, void *user,
 																  const struct CnMat *Z, CnMat *R,
-																  struct survive_kalman_update_extended_stats_t *stats);
-CN_EXPORT_FUNCTION FLT survive_kalman_meas_model_predict_update(FLT t, survive_kalman_meas_model_t *mk, void *user,
+																  struct cnkalman_update_extended_stats_t *stats);
+CN_EXPORT_FUNCTION FLT cnkalman_meas_model_predict_update(FLT t, cnkalman_meas_model_t *mk, void *user,
 															const struct CnMat *Z, CnMat *R);
-
-/*
-FLT survive_kalman_predict_update_state_extended(FLT t, survive_kalman_state_t *k, const struct CnMat *Z, CnMat* R,
-											 const survive_kalman_update_extended_params_t *extended_params,
-											 struct survive_kalman_update_extended_stats_t *stats);
-*/
 
 /**
  * Predict the state at a given delta; doesn't update the covariance matrix
@@ -168,10 +161,10 @@ FLT survive_kalman_predict_update_state_extended(FLT t, survive_kalman_state_t *
  * @param index Which state vector to pull out
  * @param out Pre allocated output buffer.
  */
-CN_EXPORT_FUNCTION void survive_kalman_extrapolate_state(FLT t, const survive_kalman_state_t *k, size_t start_index,
+CN_EXPORT_FUNCTION void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t *k, size_t start_index,
                                                          size_t end_index, FLT *out);
 
-CN_EXPORT_FUNCTION void survive_kalman_predict_state(FLT t, survive_kalman_state_t *k);
+CN_EXPORT_FUNCTION void cnkalman_predict_state(FLT t, cnkalman_state_t *k);
 
 /**
  * Run predict and update, updating the state matrix. This is for purely linear measurement models.
@@ -184,7 +177,7 @@ CN_EXPORT_FUNCTION void survive_kalman_predict_state(FLT t, survive_kalman_state
  * @param adapative Whether or not R is an adaptive matrix. When true, R should be a full n x n matrix.
  *
  */
-CN_EXPORT_FUNCTION FLT survive_kalman_predict_update_state(FLT t, survive_kalman_state_t *k, const struct CnMat *Z,
+CN_EXPORT_FUNCTION FLT cnkalman_predict_update_state(FLT t, cnkalman_state_t *k, const struct CnMat *Z,
 													   const struct CnMat *H, CnMat *R, bool adaptive);
 
 /**
@@ -201,9 +194,9 @@ CN_EXPORT_FUNCTION FLT survive_kalman_predict_update_state(FLT t, survive_kalman
  */
 /*
 CN_EXPORT_FUNCTION FLT
-survive_kalman_predict_update_state_extended(FLT t, survive_kalman_state_t *k, const struct CnMat *Z, CnMat* R,
-											 const survive_kalman_update_extended_params_t *extended_params,
-											 struct survive_kalman_update_extended_stats_t *stats);
+cnkalman_predict_update_state_extended(FLT t, cnkalman_state_t *k, const struct CnMat *Z, CnMat* R,
+											 const cnkalman_update_extended_params_t *extended_params,
+											 struct cnkalman_update_extended_stats_t *stats);
 */
 /**
  * Initialize a kalman state object
@@ -216,16 +209,16 @@ survive_kalman_predict_update_state_extended(FLT t, survive_kalman_state_t *k, c
  *
  * @returns Returns the average residual error
  */
-CN_EXPORT_FUNCTION void survive_kalman_state_init(survive_kalman_state_t *k, size_t state_cnt, kalman_transition_fn_t F,
+CN_EXPORT_FUNCTION void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt, kalman_transition_fn_t F,
 											  kalman_process_noise_fn_t q_fn, void *user, FLT *state);
 
-CN_EXPORT_FUNCTION void survive_kalman_meas_model_init(survive_kalman_state_t *k, const char *name,
-												   survive_kalman_meas_model_t *mk, kalman_measurement_model_fn_t Hfn);
-CN_EXPORT_FUNCTION void survive_kalman_state_reset(survive_kalman_state_t *k);
+CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char *name,
+												   cnkalman_meas_model_t *mk, kalman_measurement_model_fn_t Hfn);
+CN_EXPORT_FUNCTION void cnkalman_state_reset(cnkalman_state_t *k);
 
-CN_EXPORT_FUNCTION void survive_kalman_state_free(survive_kalman_state_t *k);
-CN_EXPORT_FUNCTION void survive_kalman_set_P(survive_kalman_state_t *k, const FLT *d);
-CN_EXPORT_FUNCTION void survive_kalman_set_logging_level(survive_kalman_state_t *k, int verbosity);
+CN_EXPORT_FUNCTION void cnkalman_state_free(cnkalman_state_t *k);
+CN_EXPORT_FUNCTION void cnkalman_set_P(cnkalman_state_t *k, const FLT *d);
+CN_EXPORT_FUNCTION void cnkalman_set_logging_level(cnkalman_state_t *k, int verbosity);
 
 
 #ifdef __cplusplus

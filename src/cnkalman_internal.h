@@ -1,18 +1,18 @@
-#include <cnkalman/survive_kalman.h>
+#include <cnkalman/kalman.h>
 
-typedef struct CnMat survive_kalman_gain_matrix;
+typedef struct CnMat cnkalman_gain_matrix;
 
-CnMat *survive_kalman_find_residual(survive_kalman_meas_model_t *mk, void *user, const struct CnMat *Z,
+CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struct CnMat *Z,
                                     const struct CnMat *x, CnMat *y, CnMat *H);
 
-FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
-                                  survive_kalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
-                                  CnMat *H, CnMat *x_k_k, struct survive_kalman_update_extended_stats_t *stats);
+FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
+                                  cnkalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
+                                  CnMat *H, CnMat *x_k_k, struct cnkalman_update_extended_stats_t *stats);
 
-void survive_kalman_find_k(survive_kalman_state_t *k, survive_kalman_gain_matrix *K, const struct CnMat *H,
+void cnkalman_find_k(cnkalman_state_t *k, cnkalman_gain_matrix *K, const struct CnMat *H,
                                   const CnMat *R);
 
-void cn_print_mat_v(const survive_kalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines);
+void cn_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines);
 
 static inline bool sane_covariance(const CnMat *P) {
 #ifndef NDEBUG

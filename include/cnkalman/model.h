@@ -1,6 +1,6 @@
 #pragma once
 
-#include "cnkalman/survive_kalman.h"
+#include "cnkalman/kalman.h"
 #ifdef __cplusplus
 #include <vector>
 #include <memory>
@@ -10,14 +10,14 @@ namespace cnkalman {
     struct KalmanModel;
     struct KalmanMeasurementModel {
         size_t meas_cnt;
-        survive_kalman_meas_model meas_mdl = {};
+        cnkalman_meas_model meas_mdl = {};
 
         KalmanMeasurementModel(KalmanModel* kalmanModel, const std::string& name, size_t meas_cnt);
         virtual ~KalmanMeasurementModel() = default;
         virtual bool predict_measurement(const CnMat& x, CnMat* z, CnMat* h) = 0;
         virtual bool residual(const CnMat& Z, const CnMat& x, CnMat* y, CnMat* h);
 
-        survive_kalman_update_extended_stats_t update(FLT t, const struct CnMat& Z, CnMat& R);
+        cnkalman_update_extended_stats_t update(FLT t, const struct CnMat& Z, CnMat& R);
 
         virtual std::ostream& write(std::ostream&) const;
         virtual void sample_measurement(const CnMat& x, struct CnMat& Z, const CnMat& R);
@@ -31,7 +31,7 @@ namespace cnkalman {
     struct KalmanModel {
         std::string name;
 
-        survive_kalman_state_t kalman_state = {};
+        cnkalman_state_t kalman_state = {};
         size_t state_cnt;
         FLT* state;
         CnMat* stateM;

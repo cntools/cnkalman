@@ -1,4 +1,4 @@
-#include <cnkalman/survive_kalman.h>
+#include <cnkalman/kalman.h>
 #include <stdio.h>
 #include "cnkalman_internal.h"
 
@@ -27,43 +27,43 @@ CN_EXPORT_FUNCTION FLT calculate_v(const struct CnMat *y, const struct CnMat *xD
     return .5 * (*meas_part + *delta_part);
 }
 
-const char *survive_kalman_update_extended_termination_reason_to_str(
-        enum survive_kalman_update_extended_termination_reason reason) {
+const char *cnkalman_update_extended_termination_reason_to_str(
+        enum cnkalman_update_extended_termination_reason reason) {
     switch (reason) {
-        case survive_kalman_update_extended_termination_reason_none:
+        case cnkalman_update_extended_termination_reason_none:
             return "none";
-        case survive_kalman_update_extended_termination_reason_maxiter:
+        case cnkalman_update_extended_termination_reason_maxiter:
             return "maxiter";
-        case survive_kalman_update_extended_termination_reason_invalid_jacobian:
+        case cnkalman_update_extended_termination_reason_invalid_jacobian:
             return "invalid_jac";
-        case survive_kalman_update_extended_termination_reason_xtol:
+        case cnkalman_update_extended_termination_reason_xtol:
             return "xtol";
-        case survive_kalman_update_extended_termination_reason_MAX:
+        case cnkalman_update_extended_termination_reason_MAX:
             return "MAX";
-        case survive_kalman_update_extended_termination_reason_step:
+        case cnkalman_update_extended_termination_reason_step:
             return "step";
-        case survive_kalman_update_extended_termination_reason_mtol:
+        case cnkalman_update_extended_termination_reason_mtol:
             return "mtol";
         default:
             return "";
     }
 }
 
-static inline enum survive_kalman_update_extended_termination_reason
-survive_kalman_termination_criteria(survive_kalman_state_t *k, const struct term_criteria_t *term_criteria,
+static inline enum cnkalman_update_extended_termination_reason
+cnkalman_termination_criteria(cnkalman_state_t *k, const struct term_criteria_t *term_criteria,
                                     FLT initial_error, FLT error, FLT alpha, FLT last_error) {
     FLT minimum_step = term_criteria->minimum_step > 0 ? term_criteria->minimum_step : .01;
     if (alpha == 0 || alpha < minimum_step) {
-        return survive_kalman_update_extended_termination_reason_step;
+        return cnkalman_update_extended_termination_reason_step;
     }
     if (error == 0) {
-        return survive_kalman_update_extended_termination_reason_xtol;
+        return cnkalman_update_extended_termination_reason_xtol;
     }
 
     if (isfinite(last_error) && fabs(last_error - error) < term_criteria->xtol * error) {
-        return survive_kalman_update_extended_termination_reason_xtol;
+        return cnkalman_update_extended_termination_reason_xtol;
     }
-    return survive_kalman_update_extended_termination_reason_none;
+    return cnkalman_update_extended_termination_reason_none;
 }
 
 // Extended Kalman Filter Modifications Based on an Optimization View Point
@@ -85,9 +85,9 @@ survive_kalman_termination_criteria(survive_kalman_state_t *k, const struct term
 // ΔV(X) =  -(R^-.5 * H) * (R^-.5 * y) - P^-.5 * (P^-.5 * (x_t-1 * x))
 // ΔV(X) =  H' * R^-1 * y - P^-1 * (x_t-1 * x)
 // The point of all of this is that we don't need to ever explicitly calculate R^-.5 / P^-.5; just the inverses
-FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
-                                         survive_kalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
-                                         CnMat *H, CnMat *x_k_k, struct survive_kalman_update_extended_stats_t *stats) {
+FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
+                                         cnkalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
+                                         CnMat *H, CnMat *x_k_k, struct cnkalman_update_extended_stats_t *stats) {
     int state_cnt = k->state_cnt;
     int meas_cnt = Z->rows;
 
@@ -113,8 +113,8 @@ FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat 
     assert(cn_is_finite(&iP));
     assert(cn_is_finite(&iR));
 
-    enum survive_kalman_update_extended_termination_reason stop_reason =
-            survive_kalman_update_extended_termination_reason_none;
+    enum cnkalman_update_extended_termination_reason stop_reason =
+            cnkalman_update_extended_termination_reason_none;
     FLT error = INFINITY, last_error = INFINITY;
     FLT initial_error = 0;
 
@@ -130,10 +130,10 @@ FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat 
     CN_CREATE_STACK_MAT(iPdx, state_cnt, 1);
     CN_CREATE_STACK_MAT(dVt, state_cnt, 1);
 
-    for (iter = 0; iter < max_iter && stop_reason == survive_kalman_update_extended_termination_reason_none; iter++) {
+    for (iter = 0; iter < max_iter && stop_reason == cnkalman_update_extended_termination_reason_none; iter++) {
         // Find the residual y and possibly also the jacobian H. The user could have passed one in as 'user', or given
         // us a map function which will calculate it.
-        struct CnMat *HR = survive_kalman_find_residual(mk, user, Z, &x_i, &y, H);
+        struct CnMat *HR = cnkalman_find_residual(mk, user, Z, &x_i, &y, H);
         if (stats) {
             stats->fevals++;
             stats->hevals++;
@@ -141,7 +141,7 @@ FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat 
 
         // If the measurement jacobian isn't calculable, the best we can do is just bail.
         if (HR == 0) {
-            stop_reason = survive_kalman_update_extended_termination_reason_invalid_jacobian;
+            stop_reason = cnkalman_update_extended_termination_reason_invalid_jacobian;
             error = INFINITY;
             break;
         }
@@ -168,11 +168,11 @@ FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat 
         }
 
         // Run update; filling in K
-        survive_kalman_find_k(k, K, H, R);
+        cnkalman_find_k(k, K, H, R);
 
         if ((stop_reason =
-                     survive_kalman_termination_criteria(k, &mk->term_criteria, initial_error, error, 1, last_error)) >
-            survive_kalman_update_extended_termination_reason_none) {
+                     cnkalman_termination_criteria(k, &mk->term_criteria, initial_error, error, 1, last_error)) >
+            cnkalman_update_extended_termination_reason_none) {
             goto end_of_loop;
         }
 
@@ -184,7 +184,7 @@ FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat 
         FLT scale = 1.;
         FLT m = cnDot(&dVt, &x_update);
         if (fabs(m) < mk->term_criteria.mtol) {
-            stop_reason = survive_kalman_update_extended_termination_reason_mtol;
+            stop_reason = cnkalman_update_extended_termination_reason_mtol;
             break;
         }
         FLT c = .5, tau = .5;
@@ -243,12 +243,12 @@ FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat 
                     cnNorm(&x_update));
             cn_print_mat_v(k, 1000, "new x", &x_i, false);
         }
-        if (stop_reason == survive_kalman_update_extended_termination_reason_none)
+        if (stop_reason == cnkalman_update_extended_termination_reason_none)
             stop_reason =
-                    survive_kalman_termination_criteria(k, &mk->term_criteria, initial_error, error, scale, last_error);
+                    cnkalman_termination_criteria(k, &mk->term_criteria, initial_error, error, scale, last_error);
     }
-    if (stop_reason == survive_kalman_update_extended_termination_reason_none)
-        stop_reason = survive_kalman_update_extended_termination_reason_maxiter;
+    if (stop_reason == cnkalman_update_extended_termination_reason_none)
+        stop_reason = cnkalman_update_extended_termination_reason_maxiter;
     bool isFailure = error > initial_error || isinf(error);
     if (stats) {
         stats->iterations = iter;
