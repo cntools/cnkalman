@@ -5,6 +5,7 @@
 #include <memory.h>
 #include <cnkalman/numerical_diff.h>
 #include <cnmatrix/cn_matrix.h>
+#include <stdio.h>
 
 #include "cnkalman_internal.h"
 
