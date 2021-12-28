@@ -68,18 +68,18 @@ jobs:
 
     - name: Set bundle name
       id: bundle
-      run: echo "::set-output name=BUNDLE_FILE_NAME::cnmatrix-$(git describe --tags)-${{ matrix.os }}.zip"
+      run: echo "::set-output name=BUNDLE_FILE_NAME::cnkalman-$(git describe --tags)-${{ matrix.os }}.zip"
 
     - name: Bundle
       if: matrix.build_type == 'Release'
-      working-directory: ${{runner.workspace}}/cnmatrix
+      working-directory: ${{runner.workspace}}/cnkalman
       run: 7z a ${{runner.workspace}}/build/${{ steps.bundle.outputs.BUNDLE_FILE_NAME }} ${{runner.workspace}}/build/install_root/*
 
     - uses: actions/upload-artifact@v2
       name: Upload
       if: matrix.build_type == 'Release'
       with:
-        name: cnmatrix-${{ matrix.os }}-${{ matrix.build_type }}
+        name: cnkalman-${{ matrix.os }}-${{ matrix.build_type }}
         path: | 
           ${{runner.workspace}}/build/${{steps.bundle.outputs.BUNDLE_FILE_NAME}}
     - name: Get release
