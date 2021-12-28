@@ -26,6 +26,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
       with:
+        fetch-depth: 0
         submodules: recursive
     - if: contains(matrix.os, 'ubuntu')
       name: Get Dependencies

@@ -6,3 +6,6 @@ target_include_directories(cnkalman PUBLIC
   )
 
 target_link_libraries(cnkalman cnmatrix)
+
+
+install(TARGETS cnkalman DESTINATION lib)

@@ -28,3 +28,9 @@ if(ENABLE_TESTS)
 endif()
 
 
+install(DIRECTORY include/cnkalman DESTINATION include)
+include(GNUInstallDirs)
+configure_file(cnkalman.pc.in cnkalman.pc @ONLY)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/cnkalman.pc" DESTINATION "${CMAKE_INSTALL_LIBDIR}/pkgconfig")
+
+
