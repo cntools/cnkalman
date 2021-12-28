@@ -31,7 +31,7 @@ jobs:
       name: Get Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install p7zip-full build-essential zlib1g-dev liblapacke-dev libopenblas-dev libatlas-base-dev python3 python3-pip apt-transport-https python-virtualenv ninja-build libeigen3-dev googletest ${{ matrix.deps }}
+        sudo apt-get install p7zip-full libsciplot-dev build-essential zlib1g-dev liblapacke-dev libopenblas-dev libatlas-base-dev python3 python3-pip apt-transport-https python-virtualenv ninja-build libeigen3-dev googletest ${{ matrix.deps }}
         sudo pip install filterpy
     - uses: actions/setup-python@v2
       with:
