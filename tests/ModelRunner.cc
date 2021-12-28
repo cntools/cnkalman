@@ -161,7 +161,7 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
     std::vector<CnMat> Rs;
     for(auto& measModel : model.measurementModels) {
         auto&R = Rs.emplace_back(measModel->default_R());
-        measModel->meas_mdl.term_criteria.max_iterations = 10;
+        //measModel->meas_mdl.term_criteria.max_iterations = 10;
         //measModel->meas_mdl.debug_jacobian = 1;
     }
 

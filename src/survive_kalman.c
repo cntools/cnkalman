@@ -4,10 +4,11 @@
 #endif
 #include <memory.h>
 #include <cnkalman/numerical_diff.h>
+#include <cnmatrix/cn_matrix.h>
+
+#include "cnkalman_internal.h"
 
 #include "math.h"
-
-typedef struct CnMat survive_kalman_gain_matrix;
 
 #define KALMAN_LOG_LEVEL 1000
 
@@ -20,53 +21,7 @@ typedef struct CnMat survive_kalman_gain_matrix;
 
 void survive_kalman_set_logging_level(survive_kalman_state_t *k, int v) { k->log_level = v; }
 
-static inline bool sane_covariance(const CnMat *P) {
-#ifndef NDEBUG
-	for (int i = 0; i < P->rows; i++) {
-		if (cnMatrixGet(P, i, i) < 0)
-			return false;
-	}
-#ifdef USE_EIGEN
-	return cnDet(P) > -1e-10;
-#endif
-#endif
-	return true;
-}
-
-static inline FLT mul_at_ib_a(const struct CnMat *A, const struct CnMat *B) {
-	FLT rtn = 0;
-	CN_CREATE_STACK_MAT(V, 1, 1);
-	CN_CREATE_STACK_MAT(iB, B->rows, B->cols);
-	cnInvert(B, &iB, CN_INVERT_METHOD_SVD);
-
-	CN_CREATE_STACK_MAT(AtiB, A->cols, iB.cols);
-	cnGEMM(A, &iB, 1, 0, 0, &AtiB, CN_GEMM_FLAG_A_T);
-	cnGEMM(&AtiB, A, 1, 0, 0, &V, 0);
-
-	rtn = V.data[0];
-	CN_FREE_STACK_MAT(AtiB);
-	CN_FREE_STACK_MAT(iB);
-	CN_FREE_STACK_MAT(V);
-
-	return rtn;
-}
-
-static inline FLT mul_at_b_a(const struct CnMat *A, const struct CnMat *B) {
-	CN_CREATE_STACK_MAT(V, 1, 1);
-	assert(A->cols == 1);
-	CN_CREATE_STACK_MAT(AtiB, 1, B->rows);
-	if (B->cols > 1) {
-		cnGEMM(A, B, 1, 0, 0, &AtiB, CN_GEMM_FLAG_A_T);
-		cnGEMM(&AtiB, A, 1, 0, 0, &V, 0);
-	} else {
-	  cnElementwiseMultiply(&AtiB, A, B);
-	  V.data[0] = cnDot(&AtiB, A);
-	}
-	// assert(V.data[0] >= 0);
-	return V.data[0];
-}
-
-static void cn_print_mat_v(const survive_kalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines) {
+void cn_print_mat_v(const survive_kalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines) {
 	if (k->log_level < ll) {
 		return;
 	}
@@ -114,7 +69,6 @@ CN_EXPORT_FUNCTION void survive_kalman_state_reset(survive_kalman_state_t *k) {
 	cn_set_zero(&k->P);
 
 	k->Q_fn(k->user, 10, &k->state, &k->P);
-	// printf("!!!! %e\n", cnDet(&k->P));
 	cn_print_mat(k, "initial Pk_k", &k->P, true);
 }
 
@@ -180,7 +134,7 @@ void survive_kalman_predict_covariance(FLT t, const CnMat *F, const CnMat *x, su
 	}
 	CN_FREE_STACK_MAT(Q);
 }
-static void survive_kalman_find_k(survive_kalman_state_t *k, survive_kalman_gain_matrix *K, const struct CnMat *H,
+void survive_kalman_find_k(survive_kalman_state_t *k, survive_kalman_gain_matrix *K, const struct CnMat *H,
 								  const CnMat *R) {
 	int dims = k->state_cnt;
 
@@ -239,7 +193,6 @@ static void survive_kalman_find_k(survive_kalman_state_t *k, survive_kalman_gain
 static void survive_kalman_update_covariance(survive_kalman_state_t *k, const survive_kalman_gain_matrix *K,
 											 const struct CnMat *H, const struct CnMat *R) {
 	int dims = k->state_cnt;
-	// Apparently cvEye isn't a thing!?
 	CN_CREATE_STACK_MAT(eye, dims, dims);
 	cn_set_diag_val(&eye, 1);
 
@@ -330,12 +283,13 @@ static bool numeric_jacobian_predict_fn(void * user, const struct CnMat *x, stru
     return true;
 }
 
-static bool numeric_jacobian_predict(survive_kalman_state_t *k, FLT dt, const struct CnMat *x, CnMat *H) {
+static bool numeric_jacobian_predict(survive_kalman_state_t *k, enum cnkalman_jacobian_mode mode, FLT dt, const struct CnMat *x, CnMat *H) {
     numeric_jacobian_predict_fn_ctx ctx = {
             .dt = dt,
             .k = k
     };
-    return cnkalman_numerical_differentiate(&ctx, cnkalman_numerical_differentiate_mode_two_sided, numeric_jacobian_predict_fn, x, H);
+    return cnkalman_numerical_differentiate(&ctx, mode == cnkalman_jacobian_mode_debug ?
+    (enum cnkalman_numerical_differentiate_mode) cnkalman_jacobian_mode_two_sided : mode, numeric_jacobian_predict_fn, x, H);
 }
 
 typedef struct numeric_jacobian_meas_fn_ctx {
@@ -354,16 +308,38 @@ static bool numeric_jacobian_meas_fn(void * user, const struct CnMat *x, struct 
     return true;
 }
 
-static bool numeric_jacobian(survive_kalman_state_t *k, kalman_measurement_model_fn_t Hfn, void *user, const struct CnMat *Z, const struct CnMat *x, CnMat *H) {
+static bool numeric_jacobian(enum cnkalman_jacobian_mode mode, kalman_measurement_model_fn_t Hfn, void *user, const struct CnMat *Z, const struct CnMat *x, CnMat *H) {
     numeric_jacobian_meas_fn_ctx ctx = {
             .Hfn = Hfn,
             .user = user,
             .Z = Z
     };
-    return cnkalman_numerical_differentiate(&ctx, cnkalman_numerical_differentiate_mode_two_sided, numeric_jacobian_meas_fn, x, H);
+    return cnkalman_numerical_differentiate(&ctx,mode == cnkalman_jacobian_mode_debug ?
+    cnkalman_numerical_differentiate_mode_two_sided : mode, numeric_jacobian_meas_fn, x, H);
 }
 
-static CnMat *survive_kalman_find_residual(survive_kalman_meas_model_t *mk, void *user, const struct CnMat *Z,
+static inline void compare_jacobs(const char* label, const CnMat *H, const CnMat *H_calc, const CnMat *y) {
+    fprintf(stderr, "FJAC DEBUG BEGIN %s %2dx%2d\n", label, H->rows, H->cols);
+
+    for (int j = 0; j < H->cols; j++) {
+        fprintf(stderr, "FJAC COLUMN %d\n", j);
+        for (int i = 0; i < H->rows; i++) {
+
+            FLT deriv_u = cnMatrixGet(H, i, j);
+            FLT deriv_n = cnMatrixGet(H_calc, i, j);
+            FLT diff_abs = fabs(deriv_n - deriv_u);
+            FLT diff_rel = diff_abs / (deriv_n + deriv_u);
+
+            if (diff_abs > 1e-2 && diff_rel > 1e-2) {
+                fprintf(stderr, "%2d %+7.7f %+7.7f %+7.7f %+7.7f %+7.7f \n", i, cn_as_const_vector(y)[i], deriv_u,
+                        deriv_n, diff_abs, diff_rel);
+            }
+        }
+    }
+    fprintf(stderr, "FJAC DEBUG END\n");
+}
+
+CnMat *survive_kalman_find_residual(survive_kalman_meas_model_t *mk, void *user, const struct CnMat *Z,
 										   const struct CnMat *x, CnMat *y, CnMat *H) {
 	survive_kalman_state_t *k = mk->k;
 	kalman_measurement_model_fn_t Hfn = mk->Hfn;
@@ -378,30 +354,17 @@ static CnMat *survive_kalman_find_residual(survive_kalman_meas_model_t *mk, void
 		if (okay == false) {
 			return 0;
 		}
-		// k->debug_jacobian = 1;
-		if (mk->debug_jacobian && H) {
+
+		if (mk->meas_jacobian_mode != cnkalman_jacobian_mode_user_fn && H) {
 			CN_CREATE_STACK_MAT(H_calc, H->rows, H->cols);
 
-			numeric_jacobian(k, Hfn, user, Z, x, &H_calc);
-			fprintf(stderr, "FJAC DEBUG BEGIN %s %d\n", mk->name, Z->rows);
+			numeric_jacobian(mk->meas_jacobian_mode, Hfn, user, Z, x, &H_calc);
 
-			for (int j = 0; j < H->cols; j++) {
-				fprintf(stderr, "FJAC PARM %d\n", j);
-				for (int i = 0; i < H->rows; i++) {
+			if(mk->meas_jacobian_mode == cnkalman_jacobian_mode_debug) {
+                compare_jacobs(mk->name, H, &H_calc, y);
+            }
 
-					FLT deriv_u = cnMatrixGet(H, i, j);
-					FLT deriv_n = cnMatrixGet(&H_calc, i, j);
-					FLT diff_abs = fabs(deriv_n - deriv_u);
-					FLT diff_rel = diff_abs / (deriv_n + deriv_u);
-
-					if (diff_abs > 1e-2 && diff_rel > 1e-2) {
-						fprintf(stderr, "%2d %+7.7f %+7.7f %+7.7f %+7.7f %+7.7f \n", i, cn_as_vector(y)[i], deriv_u,
-								deriv_n, diff_abs, diff_rel);
-					}
-				}
-			}
-			fprintf(stderr, "FJAC DEBUG END\n");
-			cn_matrix_copy(H, &H_calc);
+            cn_matrix_copy(H, &H_calc);
 		}
 		rtn = H;
 	} else {
@@ -411,286 +374,6 @@ static CnMat *survive_kalman_find_residual(survive_kalman_meas_model_t *mk, void
 	assert(!rtn || cn_is_finite(rtn));
 
 	return rtn;
-}
-static inline enum survive_kalman_update_extended_termination_reason
-survive_kalman_termination_criteria(survive_kalman_state_t *k, const struct term_criteria_t *term_criteria,
-									FLT initial_error, FLT error, FLT alpha, FLT last_error) {
-	FLT minimum_step = term_criteria->minimum_step > 0 ? term_criteria->minimum_step : .01;
-	if (alpha == 0 || alpha < minimum_step) {
-		return survive_kalman_update_extended_termination_reason_step;
-	}
-	if (error == 0) {
-		return survive_kalman_update_extended_termination_reason_xtol;
-	}
-
-	if (isfinite(last_error) && fabs(last_error - error) < term_criteria->xtol * error) {
-		return survive_kalman_update_extended_termination_reason_xtol;
-	}
-	return survive_kalman_update_extended_termination_reason_none;
-}
-
-CN_EXPORT_FUNCTION FLT calculate_v(const struct CnMat *y, const struct CnMat *xDiff, const struct CnMat *iR,
-							   const struct CnMat *iP, FLT *meas_part, FLT *delta_part) {
-	if (delta_part == 0) {
-		return *meas_part = .5 * mul_at_b_a(y, iR);
-	}
-	*meas_part = .5 * mul_at_b_a(y, iR);
-	*delta_part = .5 * mul_at_b_a(xDiff, iP);
-	return .5 * (*meas_part + *delta_part);
-}
-
-const char *survive_kalman_update_extended_termination_reason_to_str(
-	enum survive_kalman_update_extended_termination_reason reason) {
-	switch (reason) {
-	case survive_kalman_update_extended_termination_reason_none:
-		return "none";
-	case survive_kalman_update_extended_termination_reason_maxiter:
-		return "maxiter";
-	case survive_kalman_update_extended_termination_reason_invalid_jacobian:
-		return "invalid_jac";
-	case survive_kalman_update_extended_termination_reason_xtol:
-		return "xtol";
-	case survive_kalman_update_extended_termination_reason_MAX:
-		return "MAX";
-	case survive_kalman_update_extended_termination_reason_step:
-		return "step";
-	case survive_kalman_update_extended_termination_reason_mtol:
-		return "mtol";
-	default:
-		return "";
-	}
-}
-
-// Extended Kalman Filter Modifications Based on an Optimization View Point
-// https://www.diva-portal.org/smash/get/diva2:844060/FULLTEXT01.pdf
-// Note that in this document, 'y' is the measurement; which we refer to as 'Z'
-// throughout this code and so 'y - h(x)' from the paper is 'y' in code.
-// The main driver in this document is V(x) which is defined as:
-// r(x) = [ R^-.5 * y; P^-.5 * (x_t-1 * x) ]
-// V(X) = r'(x) * r(x) / 2
-// V(X) = 1/2 * (R^-.5 * y)' * R^-.5 * y + (P^-.5 * (x_t-1 * x))'*P^-.5 * (x_t-1 * x)
-// Then owing to the identity (AB)' = B'A', and also to the fact that R and P are symmetric and so R' = R; P' = P:
-// V(X) = 1/2 * (y' * (R^-.5)' * R^-.5 * y + (x_t-1 * x)' * (P^-.5)'* P^-.5 * (x_t-1 * x))
-// V(X) = 1/2 * (y' * (R^-.5) * R^-.5 * y + (x_t-1 * x)' * (P^-.5)* P^-.5 * (x_t-1 * x))
-// V(X) = 1/2 * (y' * (R^-1) * y + (x_t-1 * x)' * (P^-1) * (x_t-1 * x))
-
-// Similarly, we need dV(X)/dX -- ΔV(X) --
-// ΔV(X) = -[ R^-.5 * H; P^-.5]' * r(x)
-// ΔV(X) = -[ R^-.5 * H; P^-.5]' * [ R^-.5 * y; P^-.5 * (x_t-1 * x) ]
-// ΔV(X) =  -(R^-.5 * H) * (R^-.5 * y) - P^-.5 * (P^-.5 * (x_t-1 * x))
-// ΔV(X) =  H' * R^-1 * y - P^-1 * (x_t-1 * x)
-// The point of all of this is that we don't need to ever explicitly calculate R^-.5 / P^-.5; just the inverses
-
-static FLT survive_kalman_run_iterations(survive_kalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
-										 survive_kalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
-										 CnMat *H, CnMat *x_k_k, struct survive_kalman_update_extended_stats_t *stats) {
-	int state_cnt = k->state_cnt;
-	int meas_cnt = Z->rows;
-
-	CN_CREATE_STACK_MAT(y, meas_cnt, 1);
-	CN_CREATE_STACK_MAT(x_i, state_cnt, 1);
-	CN_CREATE_STACK_MAT(x_i_best, state_cnt, 1);
-
-	CN_CREATE_STACK_MAT(iR, meas_cnt, R->cols > 1 ? meas_cnt : 1);
-	if (R->cols > 1) {
-		cnInvert(R, &iR, CN_INVERT_METHOD_LU);
-	} else {
-		for (int i = 0; i < meas_cnt; i++) {
-			cn_as_vector(&iR)[i] = cn_as_const_vector(R)[i] == 0 ? 0 : 1. / cn_as_const_vector(R)[i];
-		}
-	}
-	// cn_print_mat_v(k, 100, "iR", &iR, true);
-
-	CN_CREATE_STACK_MAT(iP, state_cnt, state_cnt);
-	cnInvert(&k->P, &iP, CN_INVERT_METHOD_LU);
-	assert(sane_covariance(&k->P));
-	// cn_print_mat_v(k, 100, "iP", &iP, true);
-
-	assert(cn_is_finite(&iP));
-	assert(cn_is_finite(&iR));
-
-	enum survive_kalman_update_extended_termination_reason stop_reason =
-		survive_kalman_update_extended_termination_reason_none;
-	FLT error = INFINITY, last_error = INFINITY;
-	FLT initial_error = 0;
-
-	cn_matrix_copy(&x_i, x_k_k1);
-	int iter;
-	int max_iter = mk->term_criteria.max_iterations;
-	FLT meas_part, delta_part;
-	CN_CREATE_STACK_MAT(Hxdiff, Z->rows, 1);
-	CN_CREATE_STACK_MAT(x_update, state_cnt, 1);
-	CN_CREATE_STACK_MAT(xn, x_i.rows, x_i.cols);
-	CN_CREATE_STACK_MAT(x_diff, state_cnt, 1);
-	CN_CREATE_STACK_MAT(iRy, meas_cnt, 1);
-	CN_CREATE_STACK_MAT(iPdx, state_cnt, 1);
-	CN_CREATE_STACK_MAT(dVt, state_cnt, 1);
-
-	for (iter = 0; iter < max_iter && stop_reason == survive_kalman_update_extended_termination_reason_none; iter++) {
-		// Find the residual y and possibly also the jacobian H. The user could have passed one in as 'user', or given
-		// us a map function which will calculate it.
-		struct CnMat *HR = survive_kalman_find_residual(mk, user, Z, &x_i, &y, H);
-		if (stats) {
-			stats->fevals++;
-			stats->hevals++;
-		}
-
-		// If the measurement jacobian isn't calculable, the best we can do is just bail.
-		if (HR == 0) {
-			stop_reason = survive_kalman_update_extended_termination_reason_invalid_jacobian;
-			error = INFINITY;
-			break;
-		}
-		last_error = error;
-
-		cnSub(&x_diff, x_k_k1, &x_i);
-		error = calculate_v(&y, &x_diff, &iR, &iP, &meas_part, iter == 0 ? 0 : &delta_part);
-		assert(error >= 0);
-
-		cnGEMM(&iP, &x_diff, 1, 0, 0, &iPdx, 0);
-
-		if (R->cols > 1) {
-			cnGEMM(&iR, &y, 1, 0, 0, &iRy, 0);
-		} else {
-		  cnElementwiseMultiply(&iRy, &iR, &y);
-		}
-		cnGEMM(H, &iRy, -1, &iPdx, -1, &dVt, CN_GEMM_FLAG_A_T);
-
-		if (iter == 0) {
-			initial_error = error;
-			if (stats) {
-				stats->orignorm_meas += meas_part;
-			}
-		}
-
-		// Run update; filling in K
-		survive_kalman_find_k(k, K, H, R);
-
-		if ((stop_reason =
-				 survive_kalman_termination_criteria(k, &mk->term_criteria, initial_error, error, 1, last_error)) >
-			survive_kalman_update_extended_termination_reason_none) {
-			goto end_of_loop;
-		}
-
-		// x_update = K * (z - y - H * Δx)
-		cnGEMM(H, &x_diff, 1, 0, 0, &Hxdiff, 0);
-		cnSub(&y, &y, &Hxdiff);
-		cnGEMM(K, &y, 1, &x_diff, 1, &x_update, 0);
-
-		FLT scale = 1.;
-		FLT m = cnDot(&dVt, &x_update);
-		if (fabs(m) < mk->term_criteria.mtol) {
-			stop_reason = survive_kalman_update_extended_termination_reason_mtol;
-			break;
-		}
-		FLT c = .5, tau = .5;
-		FLT fa = 0, fa_best = error, a_best = 0;
-
-		FLT min_step = mk->term_criteria.minimum_step == 0 ? .05 : mk->term_criteria.minimum_step;
-
-		bool exit_condition = false;
-		while (!exit_condition) {
-			exit_condition = true;
-			cnAddScaled(&xn, &x_update, scale, &x_i, 1);
-			mk->Hfn(user, Z, &xn, &y, 0);
-			if (stats) {
-				stats->fevals++;
-			}
-
-			cnSub(&x_diff, x_k_k1, &xn);
-
-			fa = calculate_v(&y, &x_diff, &iR, &iP, &meas_part, &delta_part);
-			if (k->log_level >= 1000) {
-				fprintf(stdout, "%3f: %7.7f ", scale, fa);
-				cn_print_mat_v(k, 1000, "at x", &xn, false);
-			}
-			//assert(fa >= 0);
-
-			if (fa >= error + scale * m * c) {
-				exit_condition = false;
-				if (fa_best > fa) {
-					fa_best = fa;
-					a_best = scale;
-				}
-				scale = tau * scale;
-
-				if (scale <= min_step) {
-					error = fa_best;
-					scale = a_best;
-					break;
-				}
-			}
-		}
-
-		if (stats && stats->total_stats) {
-			stats->total_stats->step_cnt++;
-			stats->total_stats->step_acc += scale;
-		}
-		cnAddScaled(&x_i, &x_i, 1, &x_update, scale);
-
-		if (k->normalize_fn) {
-			k->normalize_fn(k->user, &x_i);
-		}
-		assert(cn_is_finite(&x_i));
-
-	end_of_loop:
-		if (k->log_level > 1000) {
-			fprintf(stdout, "%3d: %7.7f / %7.7f (%f, %f, %f) ", iter, initial_error, error, scale, m,
-					cnNorm(&x_update));
-			cn_print_mat_v(k, 1000, "new x", &x_i, false);
-		}
-		if (stop_reason == survive_kalman_update_extended_termination_reason_none)
-			stop_reason =
-				survive_kalman_termination_criteria(k, &mk->term_criteria, initial_error, error, scale, last_error);
-	}
-	if (stop_reason == survive_kalman_update_extended_termination_reason_none)
-		stop_reason = survive_kalman_update_extended_termination_reason_maxiter;
-	bool isFailure = error > initial_error || isinf(error);
-	if (stats) {
-		stats->iterations = iter;
-		stats->orignorm = initial_error;
-		stats->bestnorm = error;
-		stats->stop_reason = stop_reason;
-		stats->bestnorm_meas = meas_part;
-		stats->bestnorm_delta = delta_part;
-		if (stats->total_stats) {
-			stats->total_stats->total_runs++;
-			stats->total_stats->total_failures += isFailure;
-			stats->total_stats->orignorm_acc += initial_error;
-			stats->total_stats->bestnorm_acc += error;
-			stats->total_stats->stop_reason_counts[stop_reason]++;
-			stats->total_stats->total_fevals += stats->fevals;
-			stats->total_stats->total_hevals += stats->hevals;
-			stats->total_stats->total_iterations += stats->iterations;
-			stats->total_stats->bestnorm_meas_acc += stats->bestnorm_meas;
-			stats->total_stats->bestnorm_delta_acc += stats->bestnorm_delta;
-			stats->total_stats->orignorm_meas_acc += stats->orignorm_meas;
-		}
-	}
-
-	if (isFailure) {
-		initial_error = -1;
-	} else {
-		assert(cn_is_finite(H));
-		assert(cn_is_finite(K));
-		cn_matrix_copy(x_k_k, &x_i);
-	}
-
-	CN_FREE_STACK_MAT(Hxdiff);
-	CN_FREE_STACK_MAT(x_update);
-	CN_FREE_STACK_MAT(xn);
-	CN_FREE_STACK_MAT(x_diff);
-	CN_FREE_STACK_MAT(iRy);
-	CN_FREE_STACK_MAT(iPdx);
-	CN_FREE_STACK_MAT(dVt);
-	CN_FREE_STACK_MAT(y);
-	CN_FREE_STACK_MAT(x_i);
-	CN_FREE_STACK_MAT(x_i_best);
-
-	CN_FREE_STACK_MAT(iR);
-	CN_FREE_STACK_MAT(iP);
-
-	return initial_error;
 }
 
 void survive_kalman_predict_state(FLT t, survive_kalman_state_t *k) {
@@ -710,28 +393,15 @@ void survive_kalman_predict_state(FLT t, survive_kalman_state_t *k) {
 
         k->F_fn(k->user, dt, &F, &x_k1_k1);
 
-        if(k->debug_transition_jacobian) {
+        if(k->transition_jacobian_mode != cnkalman_jacobian_mode_user_fn) {
             CN_CREATE_STACK_MAT(F_calc, F.rows, F.cols);
 
-            numeric_jacobian_predict(k, dt, &x_k1_k1, &F_calc);
-            fprintf(stderr, "FJAC DEBUG BEGIN predict %d\n", x_k_k->rows);
+            numeric_jacobian_predict(k, k->transition_jacobian_mode, dt, &x_k1_k1, &F_calc);
 
-            for (int j = 0; j < F.cols; j++) {
-                fprintf(stderr, "FJAC PARM %d\n", j);
-                for (int i = 0; i < F.rows; i++) {
-
-                    FLT deriv_u = cnMatrixGet(&F, i, j);
-                    FLT deriv_n = cnMatrixGet(&F_calc, i, j);
-                    FLT diff_abs = fabs(deriv_n - deriv_u);
-                    FLT diff_rel = diff_abs / (deriv_n + deriv_u);
-
-                    if (diff_abs > 1e-2 && diff_rel > 1e-2) {
-                        fprintf(stderr, "%2d %+7.7f %+7.7f %+7.7f %+7.7f %+7.7f \n", i, cn_as_vector(x_k_k)[i], deriv_u,
-                                deriv_n, diff_abs, diff_rel);
-                    }
-                }
+            if(k->transition_jacobian_mode == cnkalman_jacobian_mode_debug) {
+                compare_jacobs("predict", &F, &F_calc, &x_k1_k1);
             }
-            fprintf(stderr, "FJAC DEBUG END\n");
+
             cn_matrix_copy(&F, &F_calc);
         }
 
@@ -744,6 +414,39 @@ void survive_kalman_predict_state(FLT t, survive_kalman_state_t *k) {
 
     k->t = t;
 }
+
+// https://arxiv.org/pdf/1702.00884.pdf
+static void
+calculate_adaptive_covariance(survive_kalman_meas_model_t *mk, void *user, const struct CnMat *Z, CnMat *R,
+                              CnMat *Pm, const struct CnMat *H) {
+    const survive_kalman_state_t *k = mk->k;
+    const CnMat *x_k_k = &k->state;
+    int state_cnt = k->state_cnt;
+
+    CN_CREATE_STACK_MAT(y, Z->rows, Z->cols);
+    CN_CREATE_STACK_MAT(scaled_eTeHPkHt, Z->rows, Z->rows);
+    CN_CREATE_STACK_MAT(yyt, Z->rows, Z->rows);
+
+    survive_kalman_find_residual(mk, user, Z, x_k_k, &y, 0);
+    cnMulTransposed(&y, &yyt, false, 0, 1);
+
+    CN_CREATE_STACK_MAT(Pk_k1Ht, state_cnt, H->rows);
+
+    FLT a = .3;
+    FLT b = 1 - a;
+    cnGEMM(Pm, H, 1, 0, 0, &Pk_k1Ht, CN_GEMM_FLAG_B_T);
+    cnGEMM(H, &Pk_k1Ht, b, &yyt, b, &scaled_eTeHPkHt, 0);
+
+    cn_print_mat_v(k, 200, "PkHt", &Pk_k1Ht, true);
+    cn_print_mat_v(k, 200, "yyt", &yyt, true);
+
+    cnAddScaled(R, R, a, &scaled_eTeHPkHt, 1);
+
+    cn_print_mat_v(k, 200, "Adaptive R", R, true);
+
+    CN_FREE_STACK_MAT(Pk_k1Ht);CN_FREE_STACK_MAT(yyt);CN_FREE_STACK_MAT(scaled_eTeHPkHt);
+}
+
 static FLT survive_kalman_predict_update_state_extended_adaptive_internal(
 	FLT t, survive_kalman_state_t *k, void *user, const struct CnMat *Z, CnMat *R, survive_kalman_meas_model_t *mk,
 	struct survive_kalman_update_extended_stats_t *stats) {
@@ -775,57 +478,18 @@ static FLT survive_kalman_predict_update_state_extended_adaptive_internal(
         t = k->t;
     }
 
-    CN_CREATE_STACK_MAT(Pm, state_cnt, state_cnt);
-    // Adaptive update happens on the covariance matrix prior; so save it.
-	if (adaptive) {
-		cn_matrix_copy(&Pm, &k->P);
-	}
-
 	CnMat *x_k_k = &k->state;
-	CN_CREATE_STACK_MAT(x_k1_k1, state_cnt, 1);
-	cn_matrix_copy(&x_k1_k1, x_k_k);
 
 	// Run prediction steps -- gets new state, and covariance matrix based on time delta
-	CN_CREATE_STACK_MAT(x_k_k1, state_cnt, 1);
+	CN_CREATE_STACK_VEC(x_k_k1, state_cnt);
+    survive_kalman_predict_state(t, k);
+    cn_matrix_copy(&x_k_k1, &k->state);
 
-	survive_kalman_predict(t, k, &x_k1_k1, &x_k_k1);
-	if (dt > 0) {
-        CN_CREATE_STACK_MAT(F, state_cnt, state_cnt);
-        cn_set_constant(&F, NAN);
-
-		k->F_fn(k->user, dt, &F, &x_k1_k1);
-
-		if(k->debug_transition_jacobian) {
-            CN_CREATE_STACK_MAT(F_calc, F.rows, F.cols);
-
-            numeric_jacobian_predict(k, dt, &x_k1_k1, &F_calc);
-            fprintf(stderr, "FJAC DEBUG BEGIN predict %d\n", x_k_k1.rows);
-
-            for (int j = 0; j < F.cols; j++) {
-                fprintf(stderr, "FJAC PARM %d\n", j);
-                for (int i = 0; i < F.rows; i++) {
-
-                    FLT deriv_u = cnMatrixGet(&F, i, j);
-                    FLT deriv_n = cnMatrixGet(&F_calc, i, j);
-                    FLT diff_abs = fabs(deriv_n - deriv_u);
-                    FLT diff_rel = diff_abs / (deriv_n + deriv_u);
-
-                    if (diff_abs > 1e-2 && diff_rel > 1e-2) {
-                        fprintf(stderr, "%2d %+7.7f %+7.7f %+7.7f %+7.7f %+7.7f \n", i, cn_as_vector(&x_k_k1)[i], deriv_u,
-                                deriv_n, diff_abs, diff_rel);
-                    }
-                }
-            }
-            fprintf(stderr, "FJAC DEBUG END\n");
-            cn_matrix_copy(&F, &F_calc);
-        }
-
-		assert(cn_is_finite(&F));
-
-        // Run predict
-		survive_kalman_predict_covariance(dt, &F, &x_k_k1, k);
-		CN_FREE_STACK_MAT(F);
-	}
+    // Adaptive update happens on the covariance matrix prior; so save it.
+    CN_CREATE_STACK_MAT(Pm, state_cnt, state_cnt);
+    if (adaptive) {
+        cn_matrix_copy(&Pm, &k->P);
+    }
 
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_predict_update_state_extended t=%f dt=%f ", t, dt);
@@ -836,6 +500,7 @@ static FLT survive_kalman_predict_update_state_extended_adaptive_internal(
 	CN_CREATE_STACK_MAT(K, state_cnt, Z->rows);
 	CN_CREATE_STACK_MAT(HStorage, Z->rows, state_cnt);
 	struct CnMat *H = &HStorage;
+
 	if (mk->term_criteria.max_iterations > 0) {
 		result = survive_kalman_run_iterations(k, Z, R, mk, user, &x_k_k1, &K, H, x_k_k, stats);
 		if (result < 0)
@@ -867,32 +532,8 @@ static FLT survive_kalman_predict_update_state_extended_adaptive_internal(
 	survive_kalman_update_covariance(k, &K, H, R);
 
 	if (adaptive) {
-		// https://arxiv.org/pdf/1702.00884.pdf
-		CN_CREATE_STACK_MAT(y, Z->rows, Z->cols);
-		CN_CREATE_STACK_MAT(scaled_eTeHPkHt, Z->rows, Z->rows);
-		CN_CREATE_STACK_MAT(yyt, Z->rows, Z->rows);
-
-		survive_kalman_find_residual(mk, user, Z, x_k_k, &y, 0);
-		cnMulTransposed(&y, &yyt, false, 0, 1);
-
-		CN_CREATE_STACK_MAT(Pk_k1Ht, state_cnt, H->rows);
-
-		FLT a = .3;
-		FLT b = 1 - a;
-		cnGEMM(&Pm, H, 1, 0, 0, &Pk_k1Ht, CN_GEMM_FLAG_B_T);
-		cnGEMM(H, &Pk_k1Ht, b, &yyt, b, &scaled_eTeHPkHt, 0);
-
-		cn_print_mat_v(k, 200, "PkHt", &Pk_k1Ht, true);
-		cn_print_mat_v(k, 200, "yyt", &yyt, true);
-
-		cnAddScaled(R, R, a, &scaled_eTeHPkHt, 1);
-
-		cn_print_mat_v(k, 200, "Adaptive R", R, true);
-
-		CN_FREE_STACK_MAT(Pk_k1Ht);
-		CN_FREE_STACK_MAT(yyt);
-		CN_FREE_STACK_MAT(scaled_eTeHPkHt);
-	}
+        calculate_adaptive_covariance(mk, user, Z, R, &Pm, H);
+    }
 
 	k->t = t;
 
@@ -916,19 +557,6 @@ FLT survive_kalman_meas_model_predict_update(FLT t, struct survive_kalman_meas_m
 	return survive_kalman_predict_update_state_extended_adaptive_internal(t, mk->k, user, Z, R, mk, &stats);
 }
 
-/*
-FLT survive_kalman_predict_update_state_extended(FLT t, survive_kalman_state_t *k, const struct CnMat *Z, CnMat* R,
-												 const survive_kalman_update_extended_params_t *extended_params,
-												 struct survive_kalman_update_extended_stats_t *stats) {
-	return survive_kalman_predict_update_state_extended_adaptive_internal(t, k, Z, (FLT *)R, extended_params, stats);
-}
-
-FLT survive_kalman_predict_update_state(FLT t, survive_kalman_state_t *k, const struct CnMat *Z, const struct CnMat *H,
-										CnMat* R, bool adaptive) {
-	survive_kalman_update_extended_params_t params = {.user = (void *)H, .adapative = adaptive};
-	return survive_kalman_predict_update_state_extended(t, k, Z, R, &params, 0);
-}
-*/
 FLT survive_kalman_predict_update_state(FLT t, survive_kalman_state_t *k, const struct CnMat *Z, const struct CnMat *H,
 										CnMat *R, bool adaptive) {
 	survive_kalman_meas_model_t mk = {.adaptive = adaptive, .k = k};

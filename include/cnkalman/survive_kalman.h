@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cnmatrix/cn_matrix.h"
+#include "numerical_diff.h"
 
 
 #ifdef __cplusplus
@@ -94,6 +95,17 @@ struct survive_kalman_update_extended_stats_t {
 	survive_kalman_update_extended_total_stats_t *total_stats;
 };
 
+/**
+ * This scheme heavily borrowed from mpfit
+ */
+enum cnkalman_jacobian_mode {
+    cnkalman_jacobian_mode_user_fn = 0,
+    cnkalman_jacobian_mode_two_sided = cnkalman_numerical_differentiate_mode_two_sided,
+    cnkalman_jacobian_mode_one_sided_plus = cnkalman_numerical_differentiate_mode_one_sided_plus,
+    cnkalman_jacobian_mode_one_sided_minus = cnkalman_numerical_differentiate_mode_one_sided_minus,
+    cnkalman_jacobian_mode_debug = -1,
+};
+
 typedef struct survive_kalman_state_s {
 	// The number of states stored. For instance, something that tracked position and velocity would have 6 states --
 	// [x, y, z, vx, vy, vz]
@@ -101,7 +113,8 @@ typedef struct survive_kalman_state_s {
 
 	void *user;
 
-    bool debug_transition_jacobian;
+    enum cnkalman_jacobian_mode transition_jacobian_mode;
+
 	kalman_predict_fn_t Predict_fn;
 	kalman_transition_fn_t F_fn;
 	kalman_process_noise_fn_t Q_fn;
@@ -125,7 +138,7 @@ typedef struct survive_kalman_state_s {
 
 typedef struct survive_kalman_meas_model {
 	survive_kalman_state_t *k;
-	bool debug_jacobian;
+    enum cnkalman_jacobian_mode meas_jacobian_mode;
 
 	const char *name;
 	kalman_measurement_model_fn_t Hfn;

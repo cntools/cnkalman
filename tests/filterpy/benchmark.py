@@ -24,7 +24,7 @@ Ps = matrices['Ps']
 
 def create_filter(model):
     if model['name'] == "BikeLandmarks":
-        return RobotEKF(.1, .5, [1.1, .01], .1, .015)
+        return RobotEKF(1, .5, [1.1, .01], .1, .015)
     elif model['name'] == "EggLandscape":
         return EggLandscape()
     elif model['name'] == "LinearToy":
@@ -113,7 +113,9 @@ plt.plot(Xs[:, 0], Xs[:, 1], label="pyfilter")
 plt.plot(Xf[:, 0], Xf[:, 1], '--', label="cnkalman")
 plt.plot(GT[:, 0], GT[:, 1], '-.', label="GT")
 plt.legend()
-plt.show()
+
+if '--show' in sys.argv:
+    plt.show()
 
 err = np.linalg.norm(Xf - Xs.reshape(Xf.shape)) + math.sqrt(pError)
 print(err, math.sqrt(pError))
