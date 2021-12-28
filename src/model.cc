@@ -46,15 +46,9 @@ namespace cnkalman {
         return os;
     }
 
-    static void kalman_predict_bounce(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0,
-                                      struct CnMat *x1) {
+    static void transition_bounce(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0, struct CnMat *x1, CnMat* F) {
         auto *self = static_cast<cnkalman::KalmanModel *>(k->user);
-        self->predict(dt, *x0, *x1);
-    }
-
-    static void transition_bounce(void *user, FLT dt, struct CnMat *f_out, const struct CnMat *x0) {
-        auto *self = static_cast<cnkalman::KalmanModel *>(user);
-        self->state_transition(dt, *f_out, *x0);
+        self->predict(dt, *x0, x1, F);
     }
 
     static void kalman_process_noise_fn(void *user, FLT dt, const struct CnMat *x, struct CnMat *Q_out) {
@@ -64,7 +58,6 @@ namespace cnkalman {
 
     KalmanModel::KalmanModel(const std::string& name, size_t state_cnt) : name(name), state_cnt(state_cnt) {
         cnkalman_state_init(&kalman_state, state_cnt, transition_bounce, kalman_process_noise_fn, this, 0);
-        kalman_state.Predict_fn = kalman_predict_bounce;
         state = kalman_state.state.data;
         stateM = &kalman_state.state;
     }
@@ -76,7 +69,7 @@ namespace cnkalman {
 
         CN_CREATE_STACK_MAT(QL, state_cnt, state_cnt);
 
-        predict(dt, x0, x1);
+        predict(dt, x0, &x1);
         process_noise(dt, x1, Q);
         cnSqRootSymmetric(&Q, &QL);
         cnRand(&X, 0, 1);
@@ -124,12 +117,13 @@ namespace cnkalman {
         cnkalman_state_free(&this->kalman_state);
     }
 
-    void KalmanModel::predict(double dt, const CnMat &x0, CnMat &x1) {
+    /*
+    void KalmanModel::predict(double dt, const CnMat &x0, CnMat *x1, CnMat* F) {
         int state_cnt = this->state_cnt;
         CN_CREATE_STACK_MAT(F, state_cnt, state_cnt);
         CN_CREATE_STACK_VEC(x1_, state_cnt);
 
-        state_transition(dt, F, x0);
+        predict(dt, F, x0);
 
         // X_k|k-1 = F * X_k-1|k-1
         cnGEMM(&F, &x0, 1, 0, 0, &x1_, (cnGEMMFlags)0);
@@ -137,6 +131,7 @@ namespace cnkalman {
         CN_FREE_STACK_MAT(x1_);
         CN_FREE_STACK_MAT(F);
     }
+*/
 
     static inline bool bulk_update_fn(void *user, const struct CnMat *Zs, const struct CnMat *x_t, struct CnMat *ys, struct CnMat *H_ks) {
         auto *self = static_cast<cnkalman::KalmanModel *>(user);
@@ -191,5 +186,24 @@ namespace cnkalman {
         cnkalman_meas_model bulk = { 0 };
         cnkalman_meas_model_init(&kalman_state, "bulk", &bulk, bulk_update_fn);
         cnkalman_meas_model_predict_update(t, &bulk, this, &Z, &R);
+    }
+
+    KalmanLinearPredictionModel::KalmanLinearPredictionModel(const std::string &name, size_t stateCnt)
+            : KalmanModel(name, stateCnt) {
+    }
+
+
+    void KalmanLinearPredictionModel::predict(double dt, const CnMat &x0, CnMat *x1, CnMat *cF) {
+        if(cF) {
+            cnCopy(&this->F(), cF, 0);
+        }
+        if(x1) {
+            CN_CREATE_STACK_VEC(x1_, state_cnt);
+
+            // X_k|k-1 = F * X_k-1|k-1
+            cnGEMM(&F(), &x0, 1, 0, 0, &x1_, (cnGEMMFlags)0);
+            cnCopy(&x1_, x1, 0);
+            CN_FREE_STACK_MAT(x1_);
+        }
     }
 }

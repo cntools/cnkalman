@@ -38,24 +38,22 @@ struct EggLandscapeMeas : public cnkalman::KalmanMeasurementModel {
         return true;
     }
 };
-struct EggLandscapeProblem : public cnkalman::KalmanModel {
-    EggLandscapeProblem() : cnkalman::KalmanModel("EggLandscape", 4) {
-        state_cnt = 4;
-        measurementModels.emplace_back(std::make_unique<EggLandscapeMeas>(this, "meas"));
-        cnkalman_state_reset(&kalman_state);
-
-        state[0] = .1; state[1] = .1;
-    }
-
+struct EggLandscapeProblem : public cnkalman::KalmanLinearPredictionModel {
     FLT _F[16] = {
             1, 0, 1, 0,
             0, 1, 0, 1,
             0, 0, 1, 0,
             0, 0, 0, 1,
     };
-    CnMat F = cnMat(4, 4, _F);
-    void state_transition(FLT dt,  CnMat& cF, const CnMat& x) override {
-        cnCopy(&F, &cF, 0);
+    CnMat Fm = cnMat(4, 4, _F);
+    virtual const CnMat& F() const { return Fm; }
+
+    EggLandscapeProblem() : cnkalman::KalmanLinearPredictionModel("EggLandscape", 4) {
+        state_cnt = 4;
+        measurementModels.emplace_back(std::make_unique<EggLandscapeMeas>(this, "meas"));
+        cnkalman_state_reset(&kalman_state);
+
+        state[0] = .1; state[1] = .1;
     }
 
     void process_noise(double dt, const CnMat &x, CnMat &Q_out) override {

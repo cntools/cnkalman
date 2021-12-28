@@ -49,16 +49,6 @@ static void cn_print_mat(cnkalman_state_t *k, const char *name, const CnMat *M, 
 	cn_print_mat_v(k, KALMAN_LOG_LEVEL, name, M, newlines);
 }
 
-void kalman_linear_predict(FLT t, const cnkalman_state_t *k, const CnMat *x_t0_t0, CnMat *x_t0_t1) {
-	int state_cnt = k->state_cnt;
-	CN_CREATE_STACK_MAT(F, state_cnt, state_cnt);
-	k->F_fn(k->user, t, &F, x_t0_t0);
-
-	// X_k|k-1 = F * X_k-1|k-1
-	cnGEMM(&F, x_t0_t0, 1, 0, 0, x_t0_t1, 0);
-	CN_FREE_STACK_MAT(F);
-}
-
 void user_is_q(void *user, FLT t, const struct CnMat *x, CnMat *Q_out) {
 	const CnMat *q = (const CnMat *)user;
 	cnScale(Q_out, q, t);
@@ -84,17 +74,16 @@ CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char
 	mk->term_criteria = (struct term_criteria_t){.max_iterations = 0, .xtol = 1e-2, .mtol = 1e-8, .minimum_step = .05};
 }
 
-void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt, kalman_transition_fn_t F,
+void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt, kalman_transition_model_fn_t F,
 							   kalman_process_noise_fn_t q_fn, void *user, FLT *state) {
 	memset(k, 0, sizeof(*k));
 
 	k->state_cnt = (int)state_cnt;
-	k->F_fn = F ? F : transition_is_identity;
 	k->Q_fn = q_fn ? q_fn : user_is_q;
 
 	k->P = cnMatCalloc(k->state_cnt, k->state_cnt);
 
-	k->Predict_fn = kalman_linear_predict;
+	k->Transition_fn = F;
 	k->user = user;
 
 	if (!state) {
@@ -249,7 +238,7 @@ static void cnkalman_update_covariance(cnkalman_state_t *k, const cnkalman_gain_
 	CN_FREE_STACK_MAT(eye);
 }
 
-static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t0_t0, CnMat *x_t0_t1) {
+static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t0_t0, CnMat *x_t0_t1, CnMat* F) {
 	// X_k|k-1 = Predict(X_K-1|k-1)
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_predict from ");
@@ -260,7 +249,7 @@ static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t
 		cnCopy(x_t0_t0, x_t0_t1, 0);
 	} else {
 		assert(t > k->t);
-		k->Predict_fn(t - k->t, k, x_t0_t0, x_t0_t1);
+		k->Transition_fn(t - k->t, k, x_t0_t0, x_t0_t1, F);
 	}
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_predict to   ");
@@ -279,7 +268,7 @@ typedef struct numeric_jacobian_predict_fn_ctx {
 } numeric_jacobian_predict_fn_ctx;
 static bool numeric_jacobian_predict_fn(void * user, const struct CnMat *x, struct CnMat *y) {
     numeric_jacobian_predict_fn_ctx* ctx = user;
-    ctx->k->Predict_fn(ctx->dt, ctx->k, x, y);
+    ctx->k->Transition_fn(ctx->dt, ctx->k, x, y, 0);
     return true;
 }
 
@@ -386,12 +375,12 @@ void cnkalman_predict_state(FLT t, cnkalman_state_t *k) {
     CN_CREATE_STACK_MAT(x_k1_k1, state_cnt, 1);
     cn_matrix_copy(&x_k1_k1, x_k_k);
 
-    cnkalman_predict(t, k, &x_k1_k1, x_k_k);
+
     if (dt > 0) {
         CN_CREATE_STACK_MAT(F, state_cnt, state_cnt);
         cn_set_constant(&F, NAN);
 
-        k->F_fn(k->user, dt, &F, &x_k1_k1);
+        cnkalman_predict(t, k, &x_k1_k1, x_k_k, &F);
 
         if(k->transition_jacobian_mode != cnkalman_jacobian_mode_user_fn) {
             CN_CREATE_STACK_MAT(F_calc, F.rows, F.cols);
@@ -571,7 +560,7 @@ void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t *k, size_t start_i
 	FLT dt = t == 0. ? 0 : t - k->t;
 	const FLT *copyFrom = cn_as_const_vector(&k->state);
 	if (dt > 0) {
-		k->Predict_fn(dt, k, x, &tmpOut);
+		k->Transition_fn(dt, k, x, &tmpOut, 0);
 		copyFrom = _tmpOut;
 	}
 	assert(out != copyFrom);

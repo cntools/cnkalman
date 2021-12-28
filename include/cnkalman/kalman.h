@@ -33,15 +33,12 @@ extern "C" {
 
 struct cnkalman_state_s;
 
-// Generates the transition matrix F
-typedef void (*kalman_transition_fn_t)(void *user, FLT dt, struct CnMat *f_out, const struct CnMat *x0);
-void kalman_linear_predict(FLT t, const struct cnkalman_state_s *k, const CnMat *x_t0_t0, CnMat *x_t0_t1);
-
 typedef void (*kalman_normalize_fn_t)(void *user, struct CnMat *x);
 
-// Given state x0 and time delta; gives the new state x1. For a linear model, this is just x1 = F * x0
-typedef void (*kalman_predict_fn_t)(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0,
-									struct CnMat *x1);
+// Given state x0 and time delta; gives the new state x1. For a linear model, this is just x1 = F * x0 and f_out is a
+// constant / time dependent
+typedef void (*kalman_transition_model_fn_t)(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0,
+                                             struct CnMat *x1, struct CnMat *f_out);
 
 // Given time and current state, generate the process noise Q_k.
 typedef void (*kalman_process_noise_fn_t)(void *user, FLT dt, const struct CnMat *x, struct CnMat *Q_out);
@@ -114,8 +111,7 @@ typedef struct cnkalman_state_s {
 
     enum cnkalman_jacobian_mode transition_jacobian_mode;
 
-	kalman_predict_fn_t Predict_fn;
-	kalman_transition_fn_t F_fn;
+	kalman_transition_model_fn_t Transition_fn;
 	kalman_process_noise_fn_t Q_fn;
 	kalman_normalize_fn_t normalize_fn;
 
@@ -209,7 +205,7 @@ cnkalman_predict_update_state_extended(FLT t, cnkalman_state_t *k, const struct 
  *
  * @returns Returns the average residual error
  */
-CN_EXPORT_FUNCTION void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt, kalman_transition_fn_t F,
+CN_EXPORT_FUNCTION void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt, kalman_transition_model_fn_t F,
 											  kalman_process_noise_fn_t q_fn, void *user, FLT *state);
 
 CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char *name,

@@ -93,7 +93,7 @@ struct BikeLandmarks : public cnkalman::KalmanModel {
         cn_ABAt_add(&Q_out, &V, &M, 0);
     }
 
-    void predict(double dt, const struct CnMat &x0, struct CnMat &x1) override {
+    void predict(double dt, const struct CnMat &x0, struct CnMat *x1, CnMat* F) override {
         FLT d = v * dt;
 
         FLT tana = tan(alpha);
@@ -103,32 +103,25 @@ struct BikeLandmarks : public cnkalman::KalmanModel {
 
         FLT R, theta = x0.data[2], beta = d / wheelbase * tana;
         R = wheelbase/tana;
-
-        FLT additional[] = {
-                -R * sin(theta) + R * sin(theta + beta),
-                R * cos(theta) - R * cos(theta + beta),
-                beta,
-        };
-        auto additionalM = cnVec(state_cnt, additional);
-        cn_elementwise_add(&x1, &x0, &additionalM);
-    }
-
-    void state_transition(FLT dt,  CnMat& cF, const CnMat& x0) override {
-        FLT d = v * dt;
-        FLT theta = x0.data[2], beta = d / wheelbase * tan(alpha);
-
-        FLT tana = tan(alpha);
-        if(fabs(tana) < 1e-7) {
-            tana = 1e-7;
+        if(x1) {
+            FLT additional[] = {
+                    -R * sin(theta) + R * sin(theta + beta),
+                    R * cos(theta) - R * cos(theta + beta),
+                    beta,
+            };
+            auto additionalM = cnVec(state_cnt, additional);
+            cn_elementwise_add(x1, &x0, &additionalM);
         }
-        FLT R = wheelbase/tana;
-        FLT f[] = {
-                1, 0, -R * cos(theta)+R*cos(theta+beta),
-                0, 1, -R * sin(theta)+R*sin(theta+beta),
-                0, 0, 1,
-        };
 
-        cn_copy_data_in(&cF, true, f);
+        if(F) {
+            FLT f[] = {
+                    1, 0, -R * cos(theta)+R*cos(theta+beta),
+                    0, 1, -R * sin(theta)+R*sin(theta+beta),
+                    0, 0, 1,
+            };
+
+            cn_copy_data_in(F, true, f);
+        }
     }
 
 };

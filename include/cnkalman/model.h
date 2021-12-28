@@ -42,16 +42,21 @@ namespace cnkalman {
         KalmanModel(const std::string& name, size_t state_cnt);
         virtual ~KalmanModel();
 
-        virtual void state_transition(FLT dt, CnMat& cF, const CnMat& x) = 0;
-        virtual void process_noise(FLT dt, const struct CnMat &x, struct CnMat &Q_out) = 0;
+        virtual void predict(FLT dt, const CnMat& x0, CnMat* x1, CnMat* cF = 0) = 0;
 
-        virtual void predict(FLT dt, const struct CnMat &x0, struct CnMat &x1);
+        virtual void process_noise(FLT dt, const struct CnMat &x, struct CnMat &Q_out) = 0;
 
         virtual void sample_state(FLT dt, const struct CnMat &x0, struct CnMat &x1);
 
         void update(FLT t);
 
         void bulk_update(FLT t, const std::vector<CnMat>& Zs, const std::vector<CnMat>& Rs);
+    };
+
+    struct KalmanLinearPredictionModel : public KalmanModel {
+        virtual const CnMat& F() const = 0;
+        KalmanLinearPredictionModel(const std::string &name, size_t stateCnt);
+        void predict(FLT dt, const CnMat& x0, CnMat* x1, CnMat* cF) override;
     };
 
     struct KalmanLinearMeasurementModel : public KalmanMeasurementModel {

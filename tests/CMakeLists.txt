@@ -2,7 +2,7 @@ include_directories(../include)
 
 include_directories(.)
 
-add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h model.h)
+add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h)
 target_link_libraries(TestKalmanModels cnkalman)
 target_link_libraries(TestKalmanModels boost_iostreams boost_system boost_filesystem)
 
