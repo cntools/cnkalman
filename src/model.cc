@@ -19,7 +19,7 @@ namespace cnkalman {
         cnkalman_meas_model_init(&kalmanModel->kalman_state, "meas", &meas_mdl, kalman_measurement);
     }
 
-    cnkalman_update_extended_stats_t KalmanMeasurementModel::update(double t, const CnMat &Z, CnMat &R) {
+    cnkalman_update_extended_stats_t KalmanMeasurementModel::update(FLT t, const CnMat &Z, CnMat &R) {
         struct cnkalman_update_extended_stats_t stats = {};
         cnkalman_meas_model_predict_update_stats(t, &meas_mdl, this, &Z, &R, &stats);
         return stats;
@@ -61,7 +61,7 @@ namespace cnkalman {
         stateM = &kalman_state.state;
     }
 
-    void KalmanModel::sample_state(double dt, const CnMat &x0, CnMat &x1) {
+    void KalmanModel::sample_state(FLT dt, const CnMat &x0, CnMat &x1) {
         CN_CREATE_STACK_MAT(X, state_cnt, 1);
         CN_CREATE_STACK_MAT(Xs, state_cnt, 1);
         CN_CREATE_STACK_MAT(Q, state_cnt, state_cnt);
@@ -76,7 +76,7 @@ namespace cnkalman {
         cn_elementwise_add(&x1, &x1, &Xs);
     }
 
-    void KalmanModel::update(double t) {
+    void KalmanModel::update(FLT t) {
         cnkalman_predict_state(t, &kalman_state);
     }
 
@@ -165,7 +165,7 @@ namespace cnkalman {
 
         return true;
     }
-    void KalmanModel::bulk_update(double t, const std::vector<CnMat> &Zs, const std::vector<CnMat> &Rs) {
+    void KalmanModel::bulk_update(FLT t, const std::vector<CnMat> &Zs, const std::vector<CnMat> &Rs) {
         assert(Zs.size() == Rs.size());
         assert(Zs.size() == measurementModels.size());
         size_t meas_cnt = 0;
@@ -192,7 +192,7 @@ namespace cnkalman {
     }
 
 
-    void KalmanLinearPredictionModel::predict(double dt, const CnMat &x0, CnMat *x1, CnMat *cF) {
+    void KalmanLinearPredictionModel::predict(FLT dt, const CnMat &x0, CnMat *x1, CnMat *cF) {
         if(cF) {
             cnCopy(&this->F(), cF, 0);
         }

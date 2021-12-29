@@ -56,13 +56,13 @@ struct EggLandscapeProblem : public cnkalman::KalmanLinearPredictionModel {
         state[0] = .1; state[1] = .1;
     }
 
-    void process_noise(double dt, const CnMat &x, CnMat &Q_out) override {
+    void process_noise(FLT dt, const CnMat &x, CnMat &Q_out) override {
         cn_set_zero(&Q_out);
         cnMatrixSet(&Q_out, 2, 2, .0001);
         cnMatrixSet(&Q_out, 3, 3, .0001);
     }
 
-    void sample_state(double dt, const CnMat &x0, CnMat &x1) override {
+    void sample_state(FLT dt, const CnMat &x0, CnMat &x1) override {
         KalmanModel::sample_state(dt, x0, x1);
 
         FLT wall = .4;

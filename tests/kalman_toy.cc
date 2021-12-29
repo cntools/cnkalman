@@ -141,8 +141,8 @@ TEST(Kalman, EKFTest) {
 	CnMat Tm = cnVec(2, true_state);
 	FLT error = cnDistance(&Xm, &Tm);
 
-	EXPECT_ARRAY_NEAR(2, X, expected_X, 1e-7);
-	EXPECT_ARRAY_NEAR(4, P, expected_P, 1e-7);
+	EXPECT_ARRAY_NEAR(2, X, expected_X, 1e-5);
+	EXPECT_ARRAY_NEAR(4, P, expected_P, 1e-5);
 }
 
 TEST(Kalman, IEKFTest) {
@@ -216,8 +216,8 @@ TEST(Kalman, EKFTest2) {
 
 	run_standard_experiment2(&X, &P, &termCriteria, 1, 0);
 
-	ASSERT_DOUBLE_EQ(X, expected_X);
-	ASSERT_DOUBLE_EQ(P, expected_P);
+	EXPECT_NEAR(X, expected_X, 1e-5);
+	EXPECT_NEAR(P, expected_P, 1e-5);
 }
 
 TEST(Kalman, IEKFTest2) {
@@ -230,7 +230,7 @@ TEST(Kalman, IEKFTest2) {
 	struct cnkalman_update_extended_stats_t stats = {};
 	run_standard_experiment2(&X, &P, &termCriteria, 1, &stats);
 
-	EXPECT_NEAR(X, expected_X, 1e-7);
-	EXPECT_NEAR(P, expected_P, 1e-7);
-	ASSERT_DOUBLE_EQ(stats.orignorm, 4.9005);
+	EXPECT_NEAR(X, expected_X, 1e-5);
+	EXPECT_NEAR(P, expected_P, 1e-5);
+	EXPECT_NEAR(stats.orignorm, 4.9005, 1e-5);
 }

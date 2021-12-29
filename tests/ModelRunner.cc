@@ -179,7 +179,7 @@ void RunModel(cnkalman::KalmanModel& model, FLT dt = 1, int run_every = 1, int e
 #endif
     FLT range[4] = { INFINITY, -INFINITY, INFINITY, -INFINITY};
 
-    std::vector<std::vector<std::vector<double>>> covs;
+    std::vector<std::vector<std::vector<FLT>>> covs;
     std::vector<double> norm;
 
     CN_CREATE_STACK_VEC(X, model.state_cnt);

@@ -68,7 +68,7 @@ struct BikeLandmarks : public cnkalman::KalmanModel {
         cn_set_diag_val(&kalman_state.P, .1);
     }
 
-    void process_noise(double dt, const struct CnMat &x, struct CnMat &Q_out) override {
+    void process_noise(FLT dt, const struct CnMat &x, struct CnMat &Q_out) override {
         FLT d = v * dt;
         FLT tana = tan(alpha);
         if(fabs(tana) < 1e-7) {
@@ -93,7 +93,7 @@ struct BikeLandmarks : public cnkalman::KalmanModel {
         cn_ABAt_add(&Q_out, &V, &M, 0);
     }
 
-    void predict(double dt, const struct CnMat &x0, struct CnMat *x1, CnMat* F) override {
+    void predict(FLT dt, const struct CnMat &x0, struct CnMat *x1, CnMat* F) override {
         FLT d = v * dt;
 
         FLT tana = tan(alpha);

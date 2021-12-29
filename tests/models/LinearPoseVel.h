@@ -24,13 +24,13 @@ struct LinearPoseVel : public cnkalman::KalmanLinearPredictionModel {
         cnkalman_state_reset(&kalman_state);
     }
 
-    void process_noise(double dt, const CnMat &x, CnMat &Q_out) override {
+    void process_noise(FLT dt, const CnMat &x, CnMat &Q_out) override {
         cn_set_zero(&Q_out);
         cnMatrixSet(&Q_out, 2, 2, .01);
         cnMatrixSet(&Q_out, 3, 3, .01);
     }
 
-    void sample_state(double dt, const CnMat &x0, CnMat &x1) override {
+    void sample_state(FLT dt, const CnMat &x0, CnMat &x1) override {
         KalmanModel::sample_state(dt, x0, x1);
         FLT wall = 10;
         if(x1.data[0] > +wall && x1.data[2] > 0) x1.data[2] *= .9;
