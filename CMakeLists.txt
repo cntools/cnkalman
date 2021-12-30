@@ -24,12 +24,17 @@ add_subdirectory(libs/cnmatrix)
 add_subdirectory(src)
 
 set(cnkalman_root_source_dir ${CMAKE_SOURCE_DIR})
-execute_process(COMMAND  ${CMAKE_COMMAND} -E env PYTHONPATH=${cnkalman_root_source_dir} python3 -c "import cnkalman.codegen as cg;assert(version_info.minor >= 8 and version_info.major >= 3)" RESULT_VARIABLE INVALID_PYTHON3 ERROR_QUIET)
+execute_process(COMMAND  ${CMAKE_COMMAND} -E env PYTHONPATH=${cnkalman_root_source_dir} python3 -c "import cnkalman.codegen as cg"
+        RESULT_VARIABLE INVALID_PYTHON3 ERROR_QUIET)
 set(INVALID_PYTHON3 ${INVALID_PYTHON3} CACHE BOOL "Whether the version of python supports generation or not" FORCE)
 function(cnkalman_generate_code FILE)
 if(NOT INVALID_PYTHON3)
-  add_custom_command(OUTPUT ${FILE}.gen COMMAND
-          ${CMAKE_COMMAND} -E env PYTHONPATH=${cnkalman_root_source_dir} python3 ${CMAKE_CURRENT_SOURCE_DIR}/${FILE})
+  get_filename_component(DIR ${CMAKE_CURRENT_SOURCE_DIR}/${FILE} DIRECTORY)
+  get_filename_component(NAME ${CMAKE_CURRENT_SOURCE_DIR}/${FILE} NAME_WE)
+  message(${DIR}/${NAME}.gen.h)
+  add_custom_command(OUTPUT ${DIR}/${NAME}.gen.h COMMAND
+          ${CMAKE_COMMAND} -E env PYTHONPATH=${cnkalman_root_source_dir} python3 ${CMAKE_CURRENT_SOURCE_DIR}/${FILE} --cnkalman-generate-source
+          COMMENT "Generating source...")
   endif()
 endfunction()
 

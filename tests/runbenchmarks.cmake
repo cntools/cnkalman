@@ -1,6 +1,6 @@
 macro(EXEC_CHECK CMD)
     message(" === ${CMD} ${ARGN}")
-    execute_process(COMMAND ${CMD} ${ARGN} RESULT_VARIABLE CMD_RESULT)
+    execute_process(COMMAND ${CMAKE_COMMAND} -E env PYTHONPATH=${cnkalman_root_source_dir} ${CMD} ${ARGN} RESULT_VARIABLE CMD_RESULT)
     if(CMD_RESULT)
         message(FATAL_ERROR "Error running ${CMD} ${ARGN}")
     endif()

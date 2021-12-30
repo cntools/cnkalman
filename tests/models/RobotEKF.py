@@ -5,8 +5,8 @@ import sympy
 from filterpy.kalman import ExtendedKalmanFilter as EKF
 from numpy import array, sqrt
 from sympy import symbols, Matrix
+from . import BikeLandmarks
 
-from filterpy.kalman import UnscentedKalmanFilter as UKF
 class RobotEKF(EKF):
     def __init__(self, dt, wheelbase, u, std_vel, std_steer):
         EKF.__init__(self, 3, 2, 2)
@@ -76,13 +76,7 @@ class RobotEKF(EKF):
 
     def predict_meas(self, x, idx):
         landmark_pos = self.landmarks[idx]
-        px = landmark_pos[0]
-        py = landmark_pos[1]
-        dist = sqrt((px - x[0, 0])**2 + (py - x[1, 0])**2)
-
-        Hx = array([[dist],
-                    [atan2(py - x[1, 0], px - x[0, 0]) - x[2, 0]]])
-        return Hx
+        return BikeLandmarks.meas_function(x.reshape(-1), landmark_pos)
 
     def update(self, z, R, landmark_idx):
         def residual(a, b):
@@ -95,29 +89,10 @@ class RobotEKF(EKF):
             return y
 
         def Hx(x, landmark_pos):
-            """ takes a state variable and returns the measurement
-            that would correspond to that state.
-            """
-            px = landmark_pos[0]
-            py = landmark_pos[1]
-            dist = sqrt((px - x[0, 0])**2 + (py - x[1, 0])**2)
+            return BikeLandmarks.meas_function(x.reshape(-1), landmark_pos).reshape(-1,1)
 
-            Hx = array([[dist],
-                        [atan2(py - x[1, 0], px - x[0, 0]) - x[2, 0]]])
-            return Hx
         def H_of(x, landmark_pos):
-            """ compute Jacobian of H matrix where h(x) computes
-            the range and bearing to a landmark for state x """
-
-            px = landmark_pos[0]
-            py = landmark_pos[1]
-            hyp = (px - x[0, 0])**2 + (py - x[1, 0])**2
-            dist = sqrt(hyp)
-
-            H = array(
-                [[-(px - x[0, 0]) / dist, -(py - x[1, 0]) / dist, 0],
-                 [ (py - x[1, 0]) / hyp,  -(px - x[0, 0]) / hyp, -1]])
-            return H
+            return BikeLandmarks.meas_function.jacobian_of_state(x.reshape(-1), landmark_pos)
         landmark = self.landmarks[landmark_idx]
 
         EKF.update(self, z, HJacobian=H_of, Hx=Hx, R=R,

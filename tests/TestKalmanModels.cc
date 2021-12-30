@@ -8,7 +8,7 @@ int main() {
     BikeLandmarks bikeModel;
     EggLandscapeProblem eggModel;
     LinearPoseVel linearModel;
-    RunModel(bikeModel, .1, 10, 20, true, false);
+    RunModel(bikeModel, .1, 10, 20, false, false);
     RunModel(eggModel, 1, 1, 20, false);
     RunModel(linearModel, 1, 1, 20, false);
 

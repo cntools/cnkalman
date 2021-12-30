@@ -213,8 +213,6 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
     if suffix is not None:
         name = name + "_" + suffix
 
-    sys.stderr.write("Writing out %s\n" % name)
-
     singular_return = len(flatten) == 1
 
     cse_output = cse(sp.Matrix(flatten))
@@ -227,16 +225,19 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
     if preamble:
         print(preamble.strip("\r\n"))
 
+    free_symbols = {k.__str__() for k in flatten.free_symbols}
     # Unroll struct types
     for idx, a in enumerate(args):
         if callable(a):
             name = get_name(a)
             for k, v in flatten_args(a()):
-                print("\tconst FLT %s = %s%s;" % (str(v), "(*"+name+")" if isinstance_namedtuple(a()) else name, k))
+                if f"{name}{k.strip('[]')}" in free_symbols:
+                    print("\tconst FLT %s = %s%s;" % (str(v), "(*"+name+")" if isinstance_namedtuple(a()) else name, k))
         elif isinstance(a, WrapTuple):
             name = get_name(a)
             for k, v in flatten_args(a.t):
-                print("\tconst FLT %s = %s%s;" % (str(v), name, k))
+                if f"{name}{k.strip('[]')}" in free_symbols:
+                    print("\tconst FLT %s = %s%s;" % (str(v), name, k))
 
     print("\n".join(
         map(lambda item: "\tconst FLT %s = %s;" % (
@@ -321,14 +322,12 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         jac_shape = this_jac.shape
         jac_size = this_jac.shape[0] * this_jac.shape[1]
 
-        this_jac = this_jac.reshape(jac_size, 1)
-
         print("// Jacobian of", func.__name__, "wrt", jac_value)
         generate_ccode(this_jac, fname, func_args, suffix=suffix, outputs=[('Hx', jac_shape)])
 
         fxm = sp.MutableDenseMatrix(fx)
         fx_size = fxm.shape[0] * fxm.shape[1]
-        this_jac = this_jac.col_join(fxm.reshape(fx_size, 1))
+        jac_with_hx = this_jac.reshape(jac_size, 1).col_join(fxm.reshape(fx_size, 1))
 
         print("// Full version Jacobian of", func.__name__, "wrt", jac_value)
 
@@ -349,30 +348,50 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         gen_{fname}{fn_suffix}(Hx, {generate_args_string(func_args, True)});
         return;
     }}"""
-        generate_ccode(this_jac, fname + "_with_hx", func_args, suffix=suffix, outputs=[('Hx', jac_shape), ('hx', this_jac.shape[0] - jac_size)], preamble=preamble)
+        generate_ccode(jac_with_hx, fname + "_with_hx", func_args, suffix=suffix, outputs=[('Hx', jac_shape), ('hx', this_jac.shape[0] - jac_size)], preamble=preamble)
 
-    rtn[fname] = this_jac
-    return rtn
+        rtn['jacobian_of_' + name] = this_jac.reshape(*jac_shape)
+    return rtn, func_args
 
 def generate_code_and_jacobians(f,transpose=False, jac_over=None, argument_specs = {}):
     generate_ccode(f, argument_specs = argument_specs)
-    generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_over=jac_over)
+    return generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_over=jac_over)
 
 from pathlib import Path
 
 generate_code_files = {}
 def get_file(fn):
+    if not '--cnkalman-generate-source' in sys.argv:
+        return None
     if fn in generate_code_files:
         return generate_code_files[fn]
     path = Path(fn)
     generate_code_files[fn] = open(f"{path.parent.as_posix()}/{path.stem}.gen.h", 'w')
     return generate_code_files[fn]
 
+import numpy as np
+def functionify(args_info, jac):
+    def f(*args):
+        subset = {}
+        for i, info in enumerate(args_info):
+            if isinstance(info, WrapTuple):
+                for j, s in enumerate(info.t):
+                    v = args[i][j]
+                    subset[s.__str__()] = v
+            else:
+                subset[info.__str__()] = args[i]
+
+        return np.array(jac.subs(subset)).astype(np.float64)
+    return f
+
 def generate_code(**kwargs):
 
     def f(func):
         f = get_file(inspect.getfile(func))
+        g = lambda *args: np.array(func(*args), dtype=np.float64)
         with redirect_stdout(f):
-            generate_code_and_jacobians(func, argument_specs = kwargs)
-        return func
+            jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs)
+            for k, v in jacs.items():
+                setattr(g, k, functionify(args, v))
+        return g
     return f

@@ -2,16 +2,16 @@ import math
 import sys
 
 import numpy as np
-from filterpy.kalman import KalmanFilter, update, predict, batch_filter, ExtendedKalmanFilter
+from filterpy.kalman import KalmanFilter
 from filterpy.stats import plot_covariance
-from math import sin, cos
 
 import json
 
 from matplotlib import pyplot as plt
 
-from RobotEKF import RobotEKF
-from EggLandscape import EggLandscape
+from models.EggLandscape import EggLandscape
+from models.RobotEKF import RobotEKF
+
 
 kp = json.load(open(sys.argv[1]))
 model = kp['model']

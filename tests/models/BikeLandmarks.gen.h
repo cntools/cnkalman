@@ -14,8 +14,6 @@ static inline void gen_predict_function(CnMat* out, const FLT dt, const FLT whee
 
 // Jacobian of predict_function wrt [dt]
 static inline void gen_predict_function_jac_dt(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-	const FLT state0 = state[0];
-	const FLT state1 = state[1];
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
@@ -57,8 +55,6 @@ static inline void gen_predict_function_jac_dt_with_hx(CnMat* Hx, CnMat* hx, con
 
 // Jacobian of predict_function wrt [wheelbase]
 static inline void gen_predict_function_jac_wheelbase(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-	const FLT state0 = state[0];
-	const FLT state1 = state[1];
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
@@ -110,8 +106,6 @@ static inline void gen_predict_function_jac_wheelbase_with_hx(CnMat* Hx, CnMat* 
 
 // Jacobian of predict_function wrt [state0, state1, state2]
 static inline void gen_predict_function_jac_state(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-	const FLT state0 = state[0];
-	const FLT state1 = state[1];
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
@@ -166,8 +160,6 @@ static inline void gen_predict_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, 
 
 // Jacobian of predict_function wrt [u0, u1]
 static inline void gen_predict_function_jac_u(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-	const FLT state0 = state[0];
-	const FLT state1 = state[1];
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
@@ -251,7 +243,6 @@ static inline void gen_meas_function(CnMat* out, const FLT* state, const FLT* la
 static inline void gen_meas_function_jac_state(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
-	const FLT state2 = state[2];
 	const FLT landmark0 = landmark[0];
 	const FLT landmark1 = landmark[1];
 	const FLT x0 = landmark1 + (-1 * state1);
@@ -302,7 +293,6 @@ static inline void gen_meas_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, con
 static inline void gen_meas_function_jac_landmark(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
-	const FLT state2 = state[2];
 	const FLT landmark0 = landmark[0];
 	const FLT landmark1 = landmark[1];
 	const FLT x0 = landmark1 + (-1 * state1);
