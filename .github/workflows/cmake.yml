@@ -37,7 +37,7 @@ jobs:
       with:
         python-version: '3.x'
     - name: Get python Dependencies
-      run: pip3 install filterpy numpy sympy
+      run: pip3 install filterpy numpy sympy symengine
     - name: Setup windows flags
       if: contains(matrix.os, 'windows') && matrix.build_type == 'Release'
       id: flags
