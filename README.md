@@ -21,6 +21,7 @@ improve on the very in depth [tutorial by Roger Labbe](https://github.com/rlabbe
 - Minimal heap allocations  
 - Supports multiple measurement models per filter, which can be integrated at varying frequencies
 - C++ bindings for objected oriented applications
+- Automatic code generation for analytical jacobians
 
 ## Quick start
 
@@ -64,4 +65,54 @@ int main() {
     return 0;
 }
 ```
+
+# Code Generation
+
+One of the more difficult things about extended kalman filters is the fact that calculating the jacobian for even a simple
+measurement or prediction function can be tedious and error prone. An optional portion of cnkalman is easy integration 
+of symengine in such a way that you can write the objective function in python and it'll generate the C implementation 
+of both the function itself as well as it's jacobian with each of it's inputs. 
+
+[BikeLandmarks.py](https://github.com/cntools/cnkalman/blob/develop/tests/models/BikeLandmarks.py)
+```python
+from symengine import atan2, asin, cos, sin, tan, sqrt
+import cnkalman.codegen as cg
+
+@cg.generate_code(state = 3, u = 2)
+def predict_function(dt, wheelbase, state, u):
+    x, y, theta = state
+    v, alpha = u
+    d = v * dt
+    R = wheelbase/tan(alpha)
+    beta = d / wheelbase * tan(alpha)
+
+    return [x + -R * sin(theta) + R * sin(theta + beta),
+            y + R * cos(theta) - R * cos(theta + beta),
+            theta + beta]
+
+@cg.generate_code(state = 3, landmark = 2)
+def meas_function(state, landmark):
+    x, y, theta = state
+    px, py = landmark
+
+    hyp = (px-x)**2 + (py-y)**2
+    dist = sqrt(hyp)
+
+    return [dist, atan2(py - y, px - x) - theta]
+```
+
+There are limitations in what type of logic is permissible here -- it must be something that is analytically tractable --
+but most objective functions themselves are not too complicated to write. 
+
+Notice that for array-type input like `state` and `u` above, you must specify a size hint.
+
+When ran, this python script generates the companion `BikeLandmarks.gen.h` which has the generated code, and callouts
+such as:
+```c
+static inline void gen_predict_function(CnMat* out, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u);
+static inline void gen_predict_function_jac_state(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u);
+```
+
+If you include this project in as a cmake project, a cmake function `cnkalman_generate_code` is available that makes this
+an optional part of your build process. 
 
