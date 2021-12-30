@@ -80,7 +80,7 @@ for i in range(0, GT.shape[0]):
     if i % ellipse_step == 0:
         plot_covariance(
             (f.x[0], f.x[1]), cov=f.P[0:2, 0:2],
-            std=1, facecolor='k', alpha=0.3)
+            std=6, facecolor='k', alpha=0.3)
 
     z = Zs[z_idx]
     z_idx += 1
@@ -105,7 +105,7 @@ for i in range(0, GT.shape[0]):
     if i % ellipse_step == 0:
         plot_covariance(
             (f.x[0], f.x[1]), cov=f.P[0:2, 0:2],
-            std=1, facecolor='g', alpha=0.8)
+            std=6, facecolor='g', alpha=0.8)
 
 Xs = np.array(Xs)
 

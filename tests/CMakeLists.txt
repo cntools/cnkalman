@@ -6,7 +6,9 @@ find_package(sciplot)
 if(sciplot_FOUND)
     add_compile_definitions(HAS_SCIPLOT)
 endif()
-add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h)
+
+cnkalman_generate_code(./models/BikeLandmarks.py)
+add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h ./models/BikeLandmarks.gen.h)
 target_link_libraries(TestKalmanModels cnkalman)
 
 add_executable(kalman_example kalman_example.c)
