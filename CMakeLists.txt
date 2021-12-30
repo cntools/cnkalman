@@ -23,8 +23,10 @@ endif()
 add_subdirectory(libs/cnmatrix)
 add_subdirectory(src)
 
+if(PROJECT_IS_TOP_LEVEL)
 if(ENABLE_TESTS)
   add_subdirectory(tests)
+endif()
 endif()
 
 
