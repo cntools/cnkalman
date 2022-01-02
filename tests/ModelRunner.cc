@@ -338,7 +338,7 @@ ModelPlot::~ModelPlot() {
     range[1] = x + w / 2.;
     range[2] = y - w / 2;
     range[3] = y + w / 2.;
-
+#ifdef HAS_SCIPLOT
     map.xrange(range[0], range[1]);
     map.yrange(range[2], range[3]);
 
@@ -347,6 +347,7 @@ ModelPlot::~ModelPlot() {
         map.show();
     }
     map.save(name + ".png");
+#endif
 }
 
 void ModelPlot::plot_cov(const cnkalman::KalmanModel &model, double deviations, const std::string &color) {

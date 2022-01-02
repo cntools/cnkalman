@@ -1,4 +1,5 @@
 #include <cnkalman/model.h>
+#undef HAS_SCIPLOT
 #if HAS_SCIPLOT
 #include <sciplot/sciplot.hpp>
 #endif
