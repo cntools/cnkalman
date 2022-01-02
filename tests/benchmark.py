@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 
 from models.EggLandscape import EggLandscape
 from models.RobotEKF import RobotEKF
-
+from models.BearingsOnlyTracking import BearingsOnlyTracking
 
 kp = json.load(open(sys.argv[1]))
 model = kp['model']
@@ -27,6 +27,8 @@ def create_filter(model):
         return RobotEKF(1, .5, [1.1, .01], .1, .015)
     elif model['name'] == "EggLandscape":
         return EggLandscape()
+    elif model['name'] == "BearingsOnlyTracking":
+        return BearingsOnlyTracking()
     elif model['name'] == "LinearToy":
         f = KalmanFilter(model['state_cnt'], model['measurement_models'][0]['meas_cnt'])
         f.Q = np.array([
@@ -77,10 +79,10 @@ for i in range(0, GT.shape[0]):
 
     f.predict()
 
-    if i % ellipse_step == 0:
+    if i % ellipse_step == 0 and False:
         plot_covariance(
             (f.x[0], f.x[1]), cov=f.P[0:2, 0:2],
-            std=6, facecolor='k', alpha=0.3)
+            std=1, facecolor='k', alpha=0.3)
 
     z = Zs[z_idx]
     z_idx += 1
@@ -93,7 +95,7 @@ for i in range(0, GT.shape[0]):
             R = Rs[meas_idx]
             if hasattr(f, 'predict_meas'):
                 ZGt = f.predict_meas(GT[i].reshape(-1, 1), meas_idx)
-                dZ = z[meas_idx].reshape(-1, 1) - ZGt
+                dZ = z[meas_idx].reshape(-1) - ZGt.reshape(-1)
                 dZs.append(dZ)
             f.update(z[meas_idx].reshape(-1, 1), Rs[meas_idx], meas_idx)
 
@@ -105,7 +107,7 @@ for i in range(0, GT.shape[0]):
     if i % ellipse_step == 0:
         plot_covariance(
             (f.x[0], f.x[1]), cov=f.P[0:2, 0:2],
-            std=6, facecolor='g', alpha=0.8)
+            std=1, facecolor='g', alpha=0.8)
 
 Xs = np.array(Xs)
 

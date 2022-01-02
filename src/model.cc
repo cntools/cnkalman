@@ -61,7 +61,7 @@ namespace cnkalman {
         stateM = &kalman_state.state;
     }
 
-    void KalmanModel::sample_state(FLT dt, const CnMat &x0, CnMat &x1) {
+    void KalmanModel::sample_state(FLT dt, const CnMat &x0, CnMat &x1, const struct CnMat* iQ) {
         CN_CREATE_STACK_MAT(X, state_cnt, 1);
         CN_CREATE_STACK_MAT(Xs, state_cnt, 1);
         CN_CREATE_STACK_MAT(Q, state_cnt, state_cnt);
@@ -69,8 +69,12 @@ namespace cnkalman {
         CN_CREATE_STACK_MAT(QL, state_cnt, state_cnt);
 
         predict(dt, x0, &x1);
-        process_noise(dt, x1, Q);
-        cnSqRootSymmetric(&Q, &QL);
+
+        if(iQ) {
+            process_noise(dt, x1, Q);
+        }
+
+        cnSqRootSymmetric(iQ ? iQ : &Q, &QL);
         cnRand(&X, 0, 1);
         cnGEMM(&QL, &X, 1, 0, 0, &Xs, (cnGEMMFlags)0);
         cn_elementwise_add(&x1, &x1, &Xs);
@@ -169,8 +173,11 @@ namespace cnkalman {
         assert(Zs.size() == Rs.size());
         assert(Zs.size() == measurementModels.size());
         size_t meas_cnt = 0;
+        size_t min_iterations = 0;
         for(auto& meas : measurementModels) {
             meas_cnt += meas->meas_cnt;
+            if(meas->meas_mdl.term_criteria.max_iterations > min_iterations)
+                min_iterations = meas->meas_mdl.term_criteria.max_iterations;
         }
 
         CN_CREATE_STACK_VEC(Z, meas_cnt);
@@ -184,7 +191,12 @@ namespace cnkalman {
 
         cnkalman_meas_model bulk = { };
         cnkalman_meas_model_init(&kalman_state, "bulk", &bulk, bulk_update_fn);
+        bulk.term_criteria.max_iterations = min_iterations;
         cnkalman_meas_model_predict_update(t, &bulk, this, &Z, &R);
+    }
+
+    void KalmanModel::reset() {
+        cnkalman_state_reset(&kalman_state);
     }
 
     KalmanLinearPredictionModel::KalmanLinearPredictionModel(const std::string &name, size_t stateCnt)

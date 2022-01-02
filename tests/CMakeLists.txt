@@ -8,9 +8,10 @@ if(sciplot_FOUND)
 endif()
 
 cnkalman_generate_code(./models/BikeLandmarks.py)
+cnkalman_generate_code(./models/BearingsOnlyTracking.py)
 cnkalman_generate_code(./models/EggLandscape.py)
 add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h ./models/BikeLandmarks.gen.h
-        ./models/EggLandscape.gen.h)
+        ./models/EggLandscape.gen.h ./models/BearingsOnlyTracking.gen.h)
 target_link_libraries(TestKalmanModels cnkalman)
 
 add_executable(kalman_example kalman_example.c)

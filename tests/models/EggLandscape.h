@@ -62,8 +62,8 @@ struct EggLandscapeProblem : public cnkalman::KalmanLinearPredictionModel {
         cnMatrixSet(&Q_out, 3, 3, .0001);
     }
 
-    void sample_state(FLT dt, const CnMat &x0, CnMat &x1) override {
-        KalmanModel::sample_state(dt, x0, x1);
+    void sample_state(FLT dt, const CnMat &x0, CnMat &x1, const struct CnMat* iQ) override {
+        KalmanModel::sample_state(dt, x0, x1, iQ);
 
         FLT wall = .4;
         if(x1.data[0] > +wall && x1.data[2] > 0) x1.data[2] *= .9;

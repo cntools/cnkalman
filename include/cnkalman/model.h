@@ -6,6 +6,9 @@
 #include <memory>
 #include <string>
 
+namespace sciplot {
+    struct Plot;
+}
 namespace cnkalman {
     struct KalmanModel;
     struct CN_EXPORT_CLASS KalmanMeasurementModel {
@@ -26,6 +29,8 @@ namespace cnkalman {
             cn_set_diag_val(&rtn, .1 * .1);
             return rtn;
         }
+
+        virtual void draw(sciplot::Plot& p) {}
     };
 
     struct CN_EXPORT_CLASS KalmanModel {
@@ -40,6 +45,7 @@ namespace cnkalman {
         virtual std::ostream& write(std::ostream&) const;
 
         KalmanModel(const std::string& name, size_t state_cnt);
+        virtual void reset();
         virtual ~KalmanModel();
 
 		virtual void predict(FLT dt, const CnMat& x0, CnMat* x1, CnMat* cF) = 0;
@@ -47,11 +53,14 @@ namespace cnkalman {
 
         virtual void process_noise(FLT dt, const struct CnMat &x, struct CnMat &Q_out) = 0;
 
-        virtual void sample_state(FLT dt, const struct CnMat &x0, struct CnMat &x1);
+        virtual void sample_state(FLT dt, const struct CnMat &x0, struct CnMat &x1, const struct CnMat* Q = 0);
 
         void update(FLT t);
 
         void bulk_update(FLT t, const std::vector<CnMat>& Zs, const std::vector<CnMat>& Rs);
+        virtual void draw(sciplot::Plot& p) {
+            for(auto& m : measurementModels) m->draw(p);
+        }
     };
 
     struct CN_EXPORT_CLASS KalmanLinearPredictionModel : public KalmanModel {

@@ -225,7 +225,7 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
     if preamble:
         print(preamble.strip("\r\n"))
 
-    free_symbols = {k.__str__() for k in flatten.free_symbols}
+    free_symbols = {k.__str__() for k in flatten[0].free_symbols} if isinstance(flatten, list) else {k.__str__() for k in flatten.free_symbols}
     # Unroll struct types
     for idx, a in enumerate(args):
         if callable(a):
@@ -337,7 +337,7 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
 
         gen_call = f"gen_{func.__name__}{fn_suffix}(hx, {generate_args_string(func_args, True)});"
         if fx_size == 1:
-            gen_call = f"*hx = gen_{func.__name__}{fn_suffix}({generate_args_string(func_args, True)});"
+            gen_call = f"hx->data[0] = gen_{func.__name__}{fn_suffix}({generate_args_string(func_args, True)});"
 
         preamble = f"""
     if(Hx == 0) {{ 

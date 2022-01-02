@@ -197,7 +197,7 @@ static void cnkalman_update_covariance(cnkalman_state_t *k, const cnkalman_gain_
 	cnCopy(Pk_k, &tmp, 0);
 
 	CN_CREATE_STACK_MAT(kRkt, dims, dims);
-	bool use_joseph_form =  R->rows == R->cols;
+	bool use_joseph_form = false;// R->rows == R->cols;
 	if (use_joseph_form) {
 	  cn_ABAt_add(&kRkt, K, R, 0);
 		for (int i = 0; i < kRkt.rows; i++) {

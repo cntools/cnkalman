@@ -34,6 +34,7 @@ if(NOT INVALID_PYTHON3)
   message(${DIR}/${NAME}.gen.h)
   add_custom_command(OUTPUT ${DIR}/${NAME}.gen.h COMMAND
           ${CMAKE_COMMAND} -E env PYTHONPATH=${cnkalman_root_source_dir} python3 ${CMAKE_CURRENT_SOURCE_DIR}/${FILE} --cnkalman-generate-source
+          DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${FILE}
           COMMENT "Generating source...")
   endif()
 endfunction()
