@@ -1,5 +1,7 @@
 #include <cnkalman/model.h>
 #include "cnkalman/ModelPlot.h"
+#include <sstream>
+
 struct BearingAccelLandmark {
     FLT Position[2];
 };
