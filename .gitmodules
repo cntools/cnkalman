@@ -1,3 +1,3 @@
 [submodule "libs/cnmatrix"]
 	path = libs/cnmatrix
-	url = ../cnmatrix.git
+	url = https://github.com/cntools/cnmatrix.git
