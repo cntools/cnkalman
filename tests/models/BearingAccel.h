@@ -101,10 +101,10 @@ struct BearingAccel : public cnkalman::KalmanModel {
 	}
 
 	void process_noise(FLT dt, const struct CnMat &x, struct CnMat &Q_out) override {
-	    BearingAccelModel v = {
-	            .Velocity = { .Pos = { 1e-2, 1e-2 }, .Theta = 1e-1 },
-	            .Accel = { .01,.01 }
-	    };
+	    BearingAccelModel v = { };
+        v.Velocity.Pos[0] = v.Velocity.Pos[1] = 1e-2;
+        v.Velocity.Theta = 1e-1;
+        v.Accel[0] = v.Accel[1] = .01;
 
         cn_set_diag(&Q_out, reinterpret_cast<const double *>(&v));
 	}
