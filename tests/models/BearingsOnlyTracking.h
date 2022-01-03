@@ -1,5 +1,6 @@
 #include <cnkalman/model.h>
 #include "BearingsOnlyTracking.gen.h"
+#include <cnkalman/ModelPlot.h>
 #ifdef HAS_SCIPLOT
 #include <sciplot/sciplot.hpp>
 #endif
@@ -9,18 +10,19 @@ struct BearingsOnlyTracking : public cnkalman::KalmanModel {
         FLT px, py;
 
 #ifdef HAS_SCIPLOT
-        void draw(sciplot::Plot& p) override {
+        void draw(cnkalman::ModelPlot& p) override {
             std::stringstream ss;
             static int idx = 1000;
+            p.include_point_in_range(px, py);
             ss << "set obj " << idx++ << " ellipse fc rgb \"green\" fs transparent solid 1 center "
                << px << "," << py << " size " << .05 << "," << .05 << " angle " << 0 << " front\n";
-            p.gnuplot(ss.str());
+            p.map.gnuplot(ss.str());
         }
 #endif
-        virtual CnMat default_R() {
-            auto R = cnMatCalloc(meas_cnt, meas_cnt);
+        virtual cnmatrix::Matrix default_R() {
+            auto R = cnmatrix::Matrix(meas_cnt, meas_cnt);
             const FLT r = M_PI * M_PI * 1e-5;
-            cn_set_diag_val(&R, r);
+            cn_set_diag_val(R, r);
             return R;
         }
 

@@ -83,6 +83,7 @@ typedef struct cnkalman_update_extended_total_stats_t {
 struct cnkalman_update_extended_stats_t {
 	FLT bestnorm, bestnorm_meas, bestnorm_delta;
 	FLT orignorm, orignorm_meas;
+	FLT origerror, besterror;
 	int iterations;
 	int fevals, hevals;
 	enum cnkalman_update_extended_termination_reason stop_reason;

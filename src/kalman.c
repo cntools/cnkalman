@@ -496,7 +496,7 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 		if (result < 0)
 			return result;
 	} else {
-		CN_CREATE_STACK_MAT(y, Z->rows, Z->cols);
+        CN_CREATE_STACK_MAT(y, Z->rows, Z->cols);
 		H = cnkalman_find_residual(mk, user, Z, &x_k_k1, &y, H);
 
 		if (H == 0) {
@@ -509,6 +509,13 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 		// Calculate the next state
 		cnGEMM(&K, &y, 1, &x_k_k1, 1, x_k_k, 0);
 		result = cnNorm2(&y);
+
+		if(stats) {
+            CN_CREATE_STACK_MAT(yp, Z->rows, Z->cols);
+            cnkalman_find_residual(mk, user, Z, x_k_k, &yp, 0);
+		    stats->origerror = sqrt(result);
+            stats->besterror = cnNorm(&yp);
+		}
 	}
 
 	assert(cn_is_finite(H));

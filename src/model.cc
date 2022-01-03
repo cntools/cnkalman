@@ -70,7 +70,7 @@ namespace cnkalman {
 
         predict(dt, x0, &x1);
 
-        if(iQ) {
+        if(!iQ) {
             process_noise(dt, x1, Q);
         }
 
@@ -169,15 +169,18 @@ namespace cnkalman {
 
         return true;
     }
-    void KalmanModel::bulk_update(FLT t, const std::vector<CnMat> &Zs, const std::vector<CnMat> &Rs) {
+    void KalmanModel::bulk_update(FLT t, const std::vector<CnMat> &Zs, const std::vector<cnmatrix::Matrix> &Rs) {
         assert(Zs.size() == Rs.size());
         assert(Zs.size() == measurementModels.size());
         size_t meas_cnt = 0;
         size_t min_iterations = 0;
+        bool debugJac = false;
         for(auto& meas : measurementModels) {
             meas_cnt += meas->meas_cnt;
             if(meas->meas_mdl.term_criteria.max_iterations > min_iterations)
                 min_iterations = meas->meas_mdl.term_criteria.max_iterations;
+            if(meas->meas_mdl.meas_jacobian_mode == cnkalman_jacobian_mode_debug)
+                debugJac = true;
         }
 
         CN_CREATE_STACK_VEC(Z, meas_cnt);
@@ -185,13 +188,15 @@ namespace cnkalman {
         int meas_idx = 0;
         for(int i = 0;i < (int)Zs.size();i++) {
             cnCopyROI(&Zs[i], &Z, meas_idx, 0);
-            cnCopyROI(&Rs[i], &R, meas_idx, meas_idx);
+            cnCopyROI(Rs[i], &R, meas_idx, meas_idx);
             meas_idx += (int)measurementModels[i]->meas_cnt;
         }
 
         cnkalman_meas_model bulk = { };
         cnkalman_meas_model_init(&kalman_state, "bulk", &bulk, bulk_update_fn);
         bulk.term_criteria.max_iterations = min_iterations;
+        if(debugJac)
+            bulk.meas_jacobian_mode = cnkalman_jacobian_mode_debug;
         cnkalman_meas_model_predict_update(t, &bulk, this, &Z, &R);
     }
 

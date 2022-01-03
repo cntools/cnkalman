@@ -4,10 +4,10 @@
 struct LandmarkMeasurement : public cnkalman::KalmanMeasurementModel {
     FLT px, py;
 
-    virtual CnMat default_R() {
-        auto R = cnMatCalloc(2, 2);
-        cnMatrixSet(&R, 0, 0, .3*.3);
-        cnMatrixSet(&R, 1, 1, .1*.1);
+    virtual cnmatrix::Matrix default_R() {
+        auto R = cnmatrix::Matrix(2, 2);
+        cnMatrixSet(R, 0, 0, .3*.3);
+        cnMatrixSet(R, 1, 1, .1*.1);
         return R;
     }
 

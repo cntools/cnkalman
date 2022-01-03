@@ -1,4 +1,4 @@
-add_library(cnkalman kalman.c ./model.cc ./numerical_diff.c ./iekf.c)
+add_library(cnkalman kalman.c ./model.cc ./numerical_diff.c ./iekf.c ./ModelPlot.cc)
 
 target_include_directories(cnkalman PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include/>
@@ -6,6 +6,5 @@ target_include_directories(cnkalman PUBLIC
   )
 
 target_link_libraries(cnkalman cnmatrix)
-
 
 install(TARGETS cnkalman DESTINATION lib)

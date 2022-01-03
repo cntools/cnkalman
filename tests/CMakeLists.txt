@@ -2,16 +2,12 @@ include_directories(../include)
 
 include_directories(.)
 
-find_package(sciplot)
-if(sciplot_FOUND)
-    add_compile_definitions(HAS_SCIPLOT)
-endif()
-
 cnkalman_generate_code(./models/BikeLandmarks.py)
 cnkalman_generate_code(./models/BearingsOnlyTracking.py)
 cnkalman_generate_code(./models/EggLandscape.py)
+cnkalman_generate_code(./models/BearingAccel.py)
 add_executable(TestKalmanModels ModelRunner.cc TestKalmanModels.cc models/LinearPoseVel.h ./models/BikeLandmarks.gen.h
-        ./models/EggLandscape.gen.h ./models/BearingsOnlyTracking.gen.h)
+        ./models/EggLandscape.gen.h ./models/BearingsOnlyTracking.gen.h ./models/BearingAccel.gen.h)
 target_link_libraries(TestKalmanModels cnkalman)
 
 add_executable(kalman_example kalman_example.c)

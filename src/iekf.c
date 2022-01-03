@@ -115,8 +115,8 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
 
     enum cnkalman_update_extended_termination_reason stop_reason =
             cnkalman_update_extended_termination_reason_none;
-    FLT error = INFINITY, last_error = INFINITY;
-    FLT initial_error = 0;
+    FLT current_norm = INFINITY, last_norm = INFINITY;
+    FLT initial_norm = 0;
 
     cn_matrix_copy(&x_i, x_k_k1);
     int iter;
@@ -142,14 +142,14 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         // If the measurement jacobian isn't calculable, the best we can do is just bail.
         if (HR == 0) {
             stop_reason = cnkalman_update_extended_termination_reason_invalid_jacobian;
-            error = INFINITY;
+            current_norm = INFINITY;
             break;
         }
-        last_error = error;
+        last_norm = current_norm;
 
         cnSub(&x_diff, x_k_k1, &x_i);
-        error = calculate_v(&y, &x_diff, &iR, &iP, &meas_part, iter == 0 ? 0 : &delta_part);
-        assert(error >= 0);
+        current_norm = calculate_v(&y, &x_diff, &iR, &iP, &meas_part, iter == 0 ? 0 : &delta_part);
+        assert(current_norm >= 0);
 
         cnGEMM(&iP, &x_diff, 1, 0, 0, &iPdx, 0);
 
@@ -161,9 +161,10 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         cnGEMM(H, &iRy, -1, &iPdx, -1, &dVt, CN_GEMM_FLAG_A_T);
 
         if (iter == 0) {
-            initial_error = error;
+            initial_norm = current_norm;
             if (stats) {
                 stats->orignorm_meas += meas_part;
+                stats->origerror = cnNorm(&y);
             }
         }
 
@@ -171,7 +172,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         cnkalman_find_k(k, K, H, R);
 
         if ((stop_reason =
-                     cnkalman_termination_criteria(k, &mk->term_criteria, initial_error, error, 1, last_error)) >
+                     cnkalman_termination_criteria(k, &mk->term_criteria, initial_norm, current_norm, 1, last_norm)) >
             cnkalman_update_extended_termination_reason_none) {
             goto end_of_loop;
         }
@@ -188,7 +189,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
             break;
         }
         FLT c = .5, tau = .5;
-        FLT fa = 0, fa_best = error, a_best = 0;
+        FLT fa = 0, fa_best = current_norm, a_best = 0;
 
         FLT min_step = mk->term_criteria.minimum_step == 0 ? .05 : mk->term_criteria.minimum_step;
 
@@ -210,7 +211,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
             }
             //assert(fa >= 0);
 
-            if (fa >= error + scale * m * c) {
+            if (fa >= current_norm + scale * m * c) {
                 exit_condition = false;
                 if (fa_best > fa) {
                     fa_best = fa;
@@ -219,7 +220,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
                 scale = tau * scale;
 
                 if (scale <= min_step) {
-                    error = fa_best;
+                    current_norm = fa_best;
                     scale = a_best;
                     break;
                 }
@@ -239,29 +240,30 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
 
         end_of_loop:
         if (k->log_level > 1000) {
-            fprintf(stdout, "%3d: %7.7f / %7.7f (%f, %f, %f) ", iter, initial_error, error, scale, m,
+            fprintf(stdout, "%3d: %7.7f / %7.7f (%f, %f, %f) ", iter, initial_norm, current_norm, scale, m,
                     cnNorm(&x_update));
             cn_print_mat_v(k, 1000, "new x", &x_i, false);
         }
         if (stop_reason == cnkalman_update_extended_termination_reason_none)
             stop_reason =
-                    cnkalman_termination_criteria(k, &mk->term_criteria, initial_error, error, scale, last_error);
+                    cnkalman_termination_criteria(k, &mk->term_criteria, initial_norm, current_norm, scale, last_norm);
     }
     if (stop_reason == cnkalman_update_extended_termination_reason_none)
         stop_reason = cnkalman_update_extended_termination_reason_maxiter;
-    bool isFailure = error > initial_error || isinf(error);
+    bool isFailure = current_norm > initial_norm || isinf(current_norm);
     if (stats) {
+        stats->besterror = cnNorm(&y);
         stats->iterations = iter;
-        stats->orignorm = initial_error;
-        stats->bestnorm = error;
+        stats->orignorm = initial_norm;
+        stats->bestnorm = current_norm;
         stats->stop_reason = stop_reason;
         stats->bestnorm_meas = meas_part;
         stats->bestnorm_delta = delta_part;
         if (stats->total_stats) {
             stats->total_stats->total_runs++;
             stats->total_stats->total_failures += isFailure;
-            stats->total_stats->orignorm_acc += initial_error;
-            stats->total_stats->bestnorm_acc += error;
+            stats->total_stats->orignorm_acc += initial_norm;
+            stats->total_stats->bestnorm_acc += current_norm;
             stats->total_stats->stop_reason_counts[stop_reason]++;
             stats->total_stats->total_fevals += stats->fevals;
             stats->total_stats->total_hevals += stats->hevals;
@@ -273,7 +275,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
     }
 
     if (isFailure) {
-        initial_error = -1;
+        initial_norm = -1;
     } else {
         assert(cn_is_finite(H));
         assert(cn_is_finite(K));
@@ -294,5 +296,5 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
     CN_FREE_STACK_MAT(iR);
     CN_FREE_STACK_MAT(iP);
 
-    return initial_error;
+    return initial_norm;
 }

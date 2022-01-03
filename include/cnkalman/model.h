@@ -6,10 +6,9 @@
 #include <memory>
 #include <string>
 
-namespace sciplot {
-    struct Plot;
-}
 namespace cnkalman {
+    struct ModelPlot;
+
     struct KalmanModel;
     struct CN_EXPORT_CLASS KalmanMeasurementModel {
         size_t meas_cnt;
@@ -24,13 +23,13 @@ namespace cnkalman {
 
         virtual std::ostream& write(std::ostream&) const;
         virtual void sample_measurement(const CnMat& x, struct CnMat& Z, const CnMat& R);
-        virtual CnMat default_R() {
-            auto rtn = cnMatCalloc(meas_cnt, meas_cnt);
-            cn_set_diag_val(&rtn, .1 * .1);
+        virtual cnmatrix::Matrix default_R() {
+            auto rtn = cnmatrix::Matrix(meas_cnt, meas_cnt);
+            cn_set_diag_val(rtn, .1 * .1);
             return rtn;
         }
 
-        virtual void draw(sciplot::Plot& p) {}
+        virtual void draw(ModelPlot& p) {}
     };
 
     struct CN_EXPORT_CLASS KalmanModel {
@@ -57,8 +56,8 @@ namespace cnkalman {
 
         void update(FLT t);
 
-        void bulk_update(FLT t, const std::vector<CnMat>& Zs, const std::vector<CnMat>& Rs);
-        virtual void draw(sciplot::Plot& p) {
+        void bulk_update(FLT t, const std::vector<CnMat>& Zs, const std::vector<cnmatrix::Matrix>& Rs);
+        virtual void draw(ModelPlot& p) {
             for(auto& m : measurementModels) m->draw(p);
         }
     };

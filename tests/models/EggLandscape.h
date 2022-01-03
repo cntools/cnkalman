@@ -8,9 +8,9 @@ struct EggLandscapeMeas : public cnkalman::KalmanMeasurementModel {
 
     }
 
-    CnMat default_R() override{
-        auto rtn = cnMatCalloc(meas_cnt, meas_cnt);
-        cn_set_diag_val(&rtn, 5e-7);
+    cnmatrix::Matrix default_R() override{
+        auto rtn = cnmatrix::Matrix(meas_cnt, meas_cnt);
+        cn_set_diag_val(rtn, 5e-7);
         return rtn;
     }
 

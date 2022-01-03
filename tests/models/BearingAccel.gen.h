@@ -1,0 +1,155 @@
+/// NOTE: This is a generated file; do not edit.
+#pragma once
+#include <cnkalman/generated_header.h>
+// clang-format off    
+static inline void gen_BearingAccelModel_predict(BearingAccelModel* out, const FLT t, const BearingAccelModel* model) {
+	const FLT x0 = 1.0/2.0 * (t * t);
+	out->Position.Pos[0]=(t * (*model).Velocity.Pos[0]) + (x0 * (*model).Accel[0]) + (*model).Position.Pos[0];
+	out->Position.Pos[1]=(t * (*model).Velocity.Pos[1]) + (x0 * (*model).Accel[1]) + (*model).Position.Pos[1];
+	out->Position.Theta=(*model).Position.Theta + (t * (*model).Velocity.Theta);
+	out->Velocity.Pos[0]=(*model).Velocity.Pos[0] + (t * (*model).Accel[0]);
+	out->Velocity.Pos[1]=(*model).Velocity.Pos[1] + (t * (*model).Accel[1]);
+	out->Velocity.Theta=(*model).Velocity.Theta;
+	out->Accel[0]=(*model).Accel[1];
+	out->Accel[1]=(*model).Accel[0];
+}
+
+// Jacobian of BearingAccelModel_predict wrt [<cnkalman.codegen.WrapMember object at 0x7f2341602730>]
+static inline void gen_BearingAccelModel_predict_jac_t(CnMat* Hx, const FLT t, const BearingAccelModel* model) {
+	cnSetZero(Hx);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[0])/sizeof(FLT), 0, (t * (*model).Accel[0]) + (*model).Velocity.Pos[0]);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[1])/sizeof(FLT), 0, (t * (*model).Accel[1]) + (*model).Velocity.Pos[1]);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), 0, (*model).Velocity.Theta);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Velocity.Pos[0])/sizeof(FLT), 0, (*model).Accel[0]);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Velocity.Pos[1])/sizeof(FLT), 0, (*model).Accel[1]);
+}
+
+// Full version Jacobian of BearingAccelModel_predict wrt [<cnkalman.codegen.WrapMember object at 0x7f2341602730>]
+// Jacobian of BearingAccelModel_predict wrt [(*model).Accel[0], (*model).Accel[1], (*model).Position.Pos[0], (*model).Position.Pos[1], (*model).Velocity.Pos[0], (*model).Velocity.Pos[1], <cnkalman.codegen.WrapMember object at 0x7f23414d82e0>, <cnkalman.codegen.WrapMember object at 0x7f23414d8190>]
+static inline void gen_BearingAccelModel_predict_jac_model(CnMat* Hx, const FLT t, const BearingAccelModel* model) {
+	const FLT x0 = 1.0/2.0 * (t * t);
+	cnSetZero(Hx);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[0])/sizeof(FLT), offsetof(BearingAccelModel, Accel[0])/sizeof(FLT), x0);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[0])/sizeof(FLT), offsetof(BearingAccelModel, Position.Pos[0])/sizeof(FLT), 1);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[0])/sizeof(FLT), offsetof(BearingAccelModel, Velocity.Pos[0])/sizeof(FLT), t);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[1])/sizeof(FLT), offsetof(BearingAccelModel, Accel[1])/sizeof(FLT), x0);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[1])/sizeof(FLT), offsetof(BearingAccelModel, Position.Pos[1])/sizeof(FLT), 1);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Pos[1])/sizeof(FLT), offsetof(BearingAccelModel, Velocity.Pos[1])/sizeof(FLT), t);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), 1);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), offsetof(BearingAccelModel, Velocity.Theta)/sizeof(FLT), t);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Velocity.Pos[0])/sizeof(FLT), offsetof(BearingAccelModel, Accel[0])/sizeof(FLT), t);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Velocity.Pos[0])/sizeof(FLT), offsetof(BearingAccelModel, Velocity.Pos[0])/sizeof(FLT), 1);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Velocity.Pos[1])/sizeof(FLT), offsetof(BearingAccelModel, Accel[1])/sizeof(FLT), t);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Velocity.Pos[1])/sizeof(FLT), offsetof(BearingAccelModel, Velocity.Pos[1])/sizeof(FLT), 1);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Velocity.Theta)/sizeof(FLT), offsetof(BearingAccelModel, Velocity.Theta)/sizeof(FLT), 1);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Accel[0])/sizeof(FLT), offsetof(BearingAccelModel, Accel[1])/sizeof(FLT), 1);
+	cnMatrixSet(Hx, offsetof(BearingAccelModel, Accel[1])/sizeof(FLT), offsetof(BearingAccelModel, Accel[0])/sizeof(FLT), 1);
+}
+
+// Full version Jacobian of BearingAccelModel_predict wrt [(*model).Accel[0], (*model).Accel[1], (*model).Position.Pos[0], (*model).Position.Pos[1], (*model).Velocity.Pos[0], (*model).Velocity.Pos[1], <cnkalman.codegen.WrapMember object at 0x7f23414d82e0>, <cnkalman.codegen.WrapMember object at 0x7f23414d8190>]
+static inline void gen_BearingAccelModel_imu_predict(CnMat* out, const BearingAccelModel* model) {
+	const FLT x0 = cos((*model).Position.Theta);
+	const FLT x1 = sin((*model).Position.Theta);
+	cnSetZero(out);
+	cnMatrixSet(out, 0, 0, (*model).Velocity.Theta);
+	cnMatrixSet(out, 1, 0, x0 * (*model).Accel[0]);
+	cnMatrixSet(out, 2, 0, x1 * (*model).Accel[1]);
+	cnMatrixSet(out, 3, 0, x0);
+	cnMatrixSet(out, 4, 0, x1);
+}
+
+// Jacobian of BearingAccelModel_imu_predict wrt [(*model).Accel[0], (*model).Accel[1], <cnkalman.codegen.WrapMember object at 0x7f23414d8b50>, <cnkalman.codegen.WrapMember object at 0x7f23414ed1f0>]
+static inline void gen_BearingAccelModel_imu_predict_jac_model(CnMat* Hx, const BearingAccelModel* model) {
+	const FLT x0 = cos((*model).Position.Theta);
+	const FLT x1 = sin((*model).Position.Theta);
+	cnSetZero(Hx);
+	cnMatrixSet(Hx, 0, offsetof(BearingAccelModel, Velocity.Theta)/sizeof(FLT), 1);
+	cnMatrixSet(Hx, 1, offsetof(BearingAccelModel, Accel[0])/sizeof(FLT), x0);
+	cnMatrixSet(Hx, 1, offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), -1 * x1 * (*model).Accel[0]);
+	cnMatrixSet(Hx, 2, offsetof(BearingAccelModel, Accel[1])/sizeof(FLT), x1);
+	cnMatrixSet(Hx, 2, offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), x0 * (*model).Accel[1]);
+	cnMatrixSet(Hx, 3, offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), -1 * x1);
+	cnMatrixSet(Hx, 4, offsetof(BearingAccelModel, Position.Theta)/sizeof(FLT), x0);
+}
+
+// Full version Jacobian of BearingAccelModel_imu_predict wrt [(*model).Accel[0], (*model).Accel[1], <cnkalman.codegen.WrapMember object at 0x7f23414d8b50>, <cnkalman.codegen.WrapMember object at 0x7f23414ed1f0>]
+
+static inline void gen_BearingAccelModel_imu_predict_jac_model_with_hx(CnMat* Hx, CnMat* hx, const BearingAccelModel* model) {
+    if(hx != 0) { 
+        gen_BearingAccelModel_imu_predict(hx, model);
+    }
+    if(Hx != 0) { 
+        gen_BearingAccelModel_imu_predict_jac_model(Hx, model);
+    }
+}
+static inline FLT gen_BearingAccelModel_tdoa_predict(const BearingAccelLandmark* A, const BearingAccelLandmark* B, const BearingAccelModel* model) {
+	const FLT x0 = -1 * (*model).Position.Pos[1];
+	const FLT x1 = -1 * (*model).Position.Pos[0];
+	return (3.33564095198152 * sqrt(1e-05 + (((*A).Position[0] + x1) * ((*A).Position[0] + x1)) + (((*A).Position[1] + x0) * ((*A).Position[1] + x0)))) + (-3.33564095198152 * sqrt(1e-05 + (((*B).Position[0] + x1) * ((*B).Position[0] + x1)) + (((*B).Position[1] + x0) * ((*B).Position[1] + x0))));
+}
+
+// Jacobian of BearingAccelModel_tdoa_predict wrt [(*A).Position[0], (*A).Position[1]]
+static inline void gen_BearingAccelModel_tdoa_predict_jac_A(CnMat* Hx, const BearingAccelLandmark* A, const BearingAccelLandmark* B, const BearingAccelModel* model) {
+	const FLT x0 = (*A).Position[0] + (-1 * (*model).Position.Pos[0]);
+	const FLT x1 = (*A).Position[1] + (-1 * (*model).Position.Pos[1]);
+	const FLT x2 = 3.33564095198152 * (1. / sqrt(1e-05 + (x0 * x0) + (x1 * x1)));
+	cnSetZero(Hx);
+	cnMatrixSet(Hx, 0, offsetof(BearingAccelLandmark, Position[0])/sizeof(FLT), x0 * x2);
+	cnMatrixSet(Hx, 0, offsetof(BearingAccelLandmark, Position[1])/sizeof(FLT), x2 * x1);
+}
+
+// Full version Jacobian of BearingAccelModel_tdoa_predict wrt [(*A).Position[0], (*A).Position[1]]
+
+static inline void gen_BearingAccelModel_tdoa_predict_jac_A_with_hx(CnMat* Hx, CnMat* hx, const BearingAccelLandmark* A, const BearingAccelLandmark* B, const BearingAccelModel* model) {
+    if(hx != 0) { 
+        hx->data[0] = gen_BearingAccelModel_tdoa_predict(A, B, model);
+    }
+    if(Hx != 0) { 
+        gen_BearingAccelModel_tdoa_predict_jac_A(Hx, A, B, model);
+    }
+}
+// Jacobian of BearingAccelModel_tdoa_predict wrt [(*B).Position[0], (*B).Position[1]]
+static inline void gen_BearingAccelModel_tdoa_predict_jac_B(CnMat* Hx, const BearingAccelLandmark* A, const BearingAccelLandmark* B, const BearingAccelModel* model) {
+	const FLT x0 = (*B).Position[0] + (-1 * (*model).Position.Pos[0]);
+	const FLT x1 = (*B).Position[1] + (-1 * (*model).Position.Pos[1]);
+	const FLT x2 = 3.33564095198152 * (1. / sqrt(1e-05 + (x0 * x0) + (x1 * x1)));
+	cnSetZero(Hx);
+	cnMatrixSet(Hx, 0, offsetof(BearingAccelLandmark, Position[0])/sizeof(FLT), -1 * x0 * x2);
+	cnMatrixSet(Hx, 0, offsetof(BearingAccelLandmark, Position[1])/sizeof(FLT), -1 * x2 * x1);
+}
+
+// Full version Jacobian of BearingAccelModel_tdoa_predict wrt [(*B).Position[0], (*B).Position[1]]
+
+static inline void gen_BearingAccelModel_tdoa_predict_jac_B_with_hx(CnMat* Hx, CnMat* hx, const BearingAccelLandmark* A, const BearingAccelLandmark* B, const BearingAccelModel* model) {
+    if(hx != 0) { 
+        hx->data[0] = gen_BearingAccelModel_tdoa_predict(A, B, model);
+    }
+    if(Hx != 0) { 
+        gen_BearingAccelModel_tdoa_predict_jac_B(Hx, A, B, model);
+    }
+}
+// Jacobian of BearingAccelModel_tdoa_predict wrt [(*model).Position.Pos[0], (*model).Position.Pos[1], <cnkalman.codegen.WrapMember object at 0x7f23414d8430>, <cnkalman.codegen.WrapMember object at 0x7f23414ed4f0>]
+static inline void gen_BearingAccelModel_tdoa_predict_jac_model(CnMat* Hx, const BearingAccelLandmark* A, const BearingAccelLandmark* B, const BearingAccelModel* model) {
+	const FLT x0 = -1 * (*model).Position.Pos[0];
+	const FLT x1 = (*A).Position[0] + x0;
+	const FLT x2 = -1 * (*model).Position.Pos[1];
+	const FLT x3 = (*A).Position[1] + x2;
+	const FLT x4 = 3.33564095198152 * (1. / sqrt(1e-05 + (x1 * x1) + (x3 * x3)));
+	const FLT x5 = (*B).Position[0] + x0;
+	const FLT x6 = (*B).Position[1] + x2;
+	const FLT x7 = 3.33564095198152 * (1. / sqrt(1e-05 + (x5 * x5) + (x6 * x6)));
+	cnSetZero(Hx);
+	cnMatrixSet(Hx, 0, offsetof(BearingAccelModel, Position.Pos[0])/sizeof(FLT), (x5 * x7) + (-1 * x1 * x4));
+	cnMatrixSet(Hx, 0, offsetof(BearingAccelModel, Position.Pos[1])/sizeof(FLT), (x6 * x7) + (-1 * x4 * x3));
+}
+
+// Full version Jacobian of BearingAccelModel_tdoa_predict wrt [(*model).Position.Pos[0], (*model).Position.Pos[1], <cnkalman.codegen.WrapMember object at 0x7f23414d8430>, <cnkalman.codegen.WrapMember object at 0x7f23414ed4f0>]
+
+static inline void gen_BearingAccelModel_tdoa_predict_jac_model_with_hx(CnMat* Hx, CnMat* hx, const BearingAccelLandmark* A, const BearingAccelLandmark* B, const BearingAccelModel* model) {
+    if(hx != 0) { 
+        hx->data[0] = gen_BearingAccelModel_tdoa_predict(A, B, model);
+    }
+    if(Hx != 0) { 
+        gen_BearingAccelModel_tdoa_predict_jac_model(Hx, A, B, model);
+    }
+}

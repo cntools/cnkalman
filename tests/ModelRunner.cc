@@ -99,7 +99,8 @@ static inline std::ostream& write_matrix(std::ostream& os, const CnMat& m) {
     os << "]";
     return os;
 }
-static inline std::ostream& write_matrix(std::ostream& os, const char* name, const std::vector<CnMat>& m) {
+template <typename M>
+static inline std::ostream& write_matrix(std::ostream& os, const char* name, const std::vector<M>& m) {
     os << "\"" << name << "\": [" << std::endl;
     bool needsCommaA = false;
     for(auto& matrix : m) {
@@ -116,36 +117,40 @@ static inline std::ostream& write_matrix(std::ostream & os, const char* name, co
     write_matrix(os, *m);
     return os;
 }
+static inline std::ostream& write_matrix(std::ostream & os, const char* name, const cnmatrix::Matrix& m) {
+    return write_matrix(os, name, (const CnMat*)m);
+}
 
-void ModelRunner::Run(cnkalman::KalmanModel &model, bool show, const CnMat* iX, const CnMat *Q, std::vector<CnMat> mRs) {
-    ModelPlot plotter(model.name);
+void ModelRunner::Run(cnkalman::KalmanModel &model, bool show, const CnMat* iX, const CnMat *Q, std::vector<cnmatrix::Matrix> mRs) {
+    cnkalman::ModelPlot plotter(model.name);
     plotter.show = show;
+    draw_gt = true;
     Run(plotter, model, iX, Q, mRs);
 }
-void ModelRunner::Run(ModelPlot& plotter, cnkalman::KalmanModel &model, const CnMat* iX, const CnMat *Q, std::vector<CnMat> mRs) {
+void ModelRunner::Run(cnkalman::ModelPlot& plotter, cnkalman::KalmanModel &model, const CnMat* iX, const CnMat *Q, std::vector<cnmatrix::Matrix> mRs, bool drawMap) {
     model.reset();
 
     std::vector<std::vector<std::vector<FLT>>> observations;
-    std::vector<std::vector<FLT>> Xs;
+    std::vector<cnmatrix::Matrix> Xs;
     std::vector<std::vector<FLT>> Xfs;
     std::vector<std::tuple<double, double>> pts_GT;
     std::vector<std::tuple<double, double>> pts_Filtered;
 
-    std::vector<double> orignorms, bestnorms, error;
+    std::vector<double> origerrors, besterrors, error;
 
     FLT deviations = 2;
 
-    std::vector<CnMat> Rs;
+    std::vector<cnmatrix::Matrix> Rs;
     for (auto &measModel : model.measurementModels) {
         auto &R = Rs.emplace_back(measModel->default_R());
         measModel->meas_mdl.term_criteria.max_iterations = max_iterations;
         //measModel->meas_mdl.meas_jacobian_mode = cnkalman_jacobian_mode_debug;
     }
 
-    //model.kalman_state.debug_transition_jacobian = 1;
+    //model.kalman_state.transition_jacobian_mode = cnkalman_jacobian_mode_debug;
 
     std::vector<std::vector<std::vector<FLT>>> covs;
-    std::vector<double> norm;
+    std::vector<double> meas_error;
 
     CN_CREATE_STACK_VEC(X, model.state_cnt);
     cnCopy(model.stateM, &X, 0);
@@ -163,13 +168,21 @@ void ModelRunner::Run(ModelPlot& plotter, cnkalman::KalmanModel &model, const Cn
     pts_GT.emplace_back(X.data[0], X.data[1]);
     Xfs.push_back(cnMatToVector(*model.stateM));
 
+    srand(42);
+    for (int i = 0; i <= iterations; i++) {
+        t += dt;
+        model.sample_state(dt, X, X, Q);
+        Xs.push_back(X);
+    }
+
+    t = 1 - dt;
     for (int i = 0; i <= iterations; i++) {
         t += dt;
 
-        model.sample_state(dt, X, X, Q);
+        X = Xs[i];
+
         plotter.include_point_in_range(X.data);
 
-        Xs.push_back(cnMatToVector(X));
         pts_GT.emplace_back(X.data[0], X.data[1]);
 
         if (i % run_every != 0)
@@ -178,10 +191,10 @@ void ModelRunner::Run(ModelPlot& plotter, cnkalman::KalmanModel &model, const Cn
         model.update(t);
 
         if (i % ellipse_step == 0) {
-            //plot_cov(map, model, deviations, "blue");
+            //plotter.plot_cov(model, deviations, "blue");
         }
 
-        FLT norm = 0, onorm = 0;
+        FLT error = 0, oerror = 0;
 
         std::vector<std::vector<FLT>> obs;
         std::vector<CnMat> Zs;
@@ -200,9 +213,11 @@ void ModelRunner::Run(ModelPlot& plotter, cnkalman::KalmanModel &model, const Cn
                 auto &measModel = model.measurementModels[j];
                 auto Z = Zs[j];
 
-                auto stats = measModel->update(t, Z, Rs[j]);
-                norm += stats.bestnorm;
-                onorm += stats.orignorm;
+                if(run_every_per_meas.empty() || iterations % run_every_per_meas[j] == 0) {
+                    auto stats = measModel->update(t, Z, Rs[j]);
+                    error += stats.besterror;
+                    oerror += stats.origerror;
+                }
             }
         }
 
@@ -217,10 +232,10 @@ void ModelRunner::Run(ModelPlot& plotter, cnkalman::KalmanModel &model, const Cn
         Xfs.push_back(cnMatToVector(*model.stateM));
         pts_Filtered.emplace_back(model.state[0], model.state[1]);
 
-        bestnorms.push_back(norm);
-        orignorms.push_back(onorm);
+        besterrors.push_back(error);
+        origerrors.push_back(oerror);
 
-        error.emplace_back(cnDistance(&X, model.stateM));
+        meas_error.emplace_back(cnDistance(&X, model.stateM));
 
         if (i % ellipse_step == 0) {
             plotter.plot_cov(model, deviations);
@@ -249,124 +264,113 @@ void ModelRunner::Run(ModelPlot& plotter, cnkalman::KalmanModel &model, const Cn
     f << "\"ellipse_step\":" << ellipse_step << "" << std::endl;
     f << "}";
 
-
+    model.draw(plotter);
 #ifdef HAS_SCIPLOT
 
-    //plotter.plot.drawWithVecs("lines", orignorms).label(settingsName + " Orig");
-    plotter.plot.drawWithVecs("lines", bestnorms).label(settingsName + " Best");
-    plotter.plot.drawWithVecs("lines", error).label(settingsName + " GT Error");
+    //plotter.plot.drawWithVecs("lines", origerrors).label(settingsName + " Orig");
+    plotter.plot.drawWithVecs("lines", besterrors).label(settingsName + " Best").dashType(plotter.cnt++ % 12).lineStyle(plotter.cnt % 16);
+    plotter.plot.drawWithVecs("lines", meas_error).label(settingsName + " GT Error").dashType(plotter.cnt++ % 12).lineStyle(plotter.cnt % 16);
 
-/*
-    if (!model.measurementModels.empty() && model.measurementModels[0]->meas_cnt >= 3) {
-        FILE *f = fopen("map.rgb", "w");
+    if (!model.measurementModels.empty() && drawMap ) {
+        cnmatrix::Matrix map(250, 250 * 3);
+        cnmatrix::Matrix map2(250, 250);
+
+        FLT x,y,w,h;
+        plotter.get_view(x, y, w, h);
+        CN_CREATE_STACK_VEC(S, model.state_cnt);
+        int color_offset = 0;
+        FLT min_z[4] = {INFINITY,INFINITY,INFINITY, INFINITY}, max_z[4] = {-INFINITY, -INFINITY, -INFINITY, -INFINITY};
+
         for (int j = 0; j < 250; j++) {
             for (int i = 0; i < 250; i++) {
                 FLT sx = i / 250. * w + x - w / 2;
                 FLT sy = j / 250. * w + y - w / 2;
-                X.data[0] = sx;
-                X.data[1] = sy;
+                S.data[0] = sx;
+                S.data[1] = sy;
+                color_offset = 0;
+                for(int z = 0;z < model.measurementModels.size();z++) {
+                    auto &meas = model.measurementModels[z];
+                    auto Z = cnmatrix::Matrix(meas->meas_cnt);
+                    meas->predict_measurement(S, Z, 0);
+                    auto iR = cnmatrix::Matrix::Like(Rs[z]);
+                    cnInvert(Rs[z], iR, CN_INVERT_METHOD_SVD);
 
-                auto &meas = model.measurementModels[0];
-                if (meas->meas_cnt < 3) break;
+                    auto rZ = cnmatrix::Matrix::Like(Z);
+                    cnGEMM(iR, Z, 1, 0, 0, rZ, (enum cnGEMMFlags)0);
 
-                CN_CREATE_STACK_VEC(Z, MAX(meas->meas_cnt, 3));
-                meas->predict_measurement(X, &Z, 0);
-
-                uint32_t rgb32 = create_rgb(Z.data);
-                fwrite(&rgb32, 1, 4, f);
+                    for(int zc = 0;zc < meas->meas_cnt;zc++) {
+                        map(j, i * 3 + (color_offset++) % 3) += rZ(zc) * rZ(zc);
+                    }
+                }
             }
         }
+        for (int j = 0; j < 250; j++) {
+            for (int i = 0; i < 250; i++) {
+                for(int k = 0;k < 3;k++) {
+                    auto v = map(j, i * 3 + k);
+                    min_z[k] = fmin(min_z[k], v);
+                    max_z[k] = fmax(max_z[k], v);
+                    map2(j, i) += v;
+                }
+                min_z[3] = fmin(min_z[3], map2(j,i));
+                max_z[3] = fmax(max_z[3], map2(j,i));
+            }
+        }
+
+        FILE *f = fopen("map.rgb", "w");
+        FILE *f2 = fopen("map2.rgb", "w");
+        for (int j = 0; j < 250; j++) {
+            for (int i = 0; i < 250; i++) {
+                for(int k = 0;k < 3;k++) {
+                    auto v = (map(j, i * 3 + k) - min_z[k]) / (max_z[k] - min_z[k] + 1e-10);
+                    uint8_t b = fmax(0, fmin(255, v * 255));
+                    fwrite(&b, 1, 1, f);
+                }
+                uint8_t b = 0xff;
+
+                auto v = (map2(j, i) - min_z[3]) / (max_z[3] - min_z[3] + 1e-10);
+                b = fmax(0, fmin(255, v * 255));
+                uint8_t alpha = 0;
+
+                FLT div = .1;
+                FLT fv = fmod(v, div);
+                if(fv > div/2) fv = div - fv;
+                FLT pa = .01, pb = .005;
+                auto fvm = fmax(0, fmin(1, (fv - pb) / (pa - pb)));
+                alpha = 80 * fvm + (1-fvm) * 0;
+
+                for(int zz = 0;zz < 3;zz++) fwrite(&b, 1, 1, f2);
+                fwrite(&alpha, 1, 1, f);
+                fwrite(&alpha, 1, 1, f2);
+            }
+        }
+        fclose(f2);
         fclose(f);
-        std::stringstream ss;
-        ss << "'map.rgb' binary array=(250,250) center=(" << x << ", " << y << ") dx=" << (w / 250.)
-           << " format='%uchar'";
+
+        {
+            std::stringstream ss;
+            ss << "'map.rgb' binary array=(250,250) center=(" << x << ", " << y << ") dx=" << (w / 250.)
+               << " format='%uchar' ";
+            plotter.map.draw(ss.str(), "", "rgbalpha").labelNone();
+        }
+        if(false)
+        {
+            std::stringstream ss;
+            ss << "'map2.rgb' binary array=(250,250) center=(" << x << ", " << y << ") dx=" << (w / 250.)
+               << " format='%uchar' ";
+            plotter.map.draw(ss.str(), "", "rgbalpha").labelNone();
+        }
     }
-*/
-    plotter.map.drawWithVecs("lines", pts_GT).label(settingsName + " GT");
-    plotter.map.drawWithVecs("lines", pts_Filtered).label(settingsName + " Filter");
-    model.draw(plotter.map);
+
+    if(draw_gt)
+        plotter.map.drawWithVecs("lines", pts_GT).label(settingsName + " GT").lineWidth(3);
+    draw_gt = false;
+    plotter.map.drawWithVecs("lines", pts_Filtered).label(settingsName + " Filter").dashType(plotter.cnt++ % 12).lineStyle(plotter.cnt % 16);
 
 #endif
-
-    for (auto &R : Rs)
-        free(R.data);
 
 }
 
 ModelRunner::ModelRunner(const std::string &settingsName, double dt, int iterations, int max_iterations, int runEvery, int ellipseStep,
                          bool bulkUpdate) : settingsName(settingsName), dt(dt), iterations(iterations), max_iterations(max_iterations),
                                             run_every(runEvery), ellipse_step(ellipseStep), bulk_update(bulkUpdate) {}
-
-ModelPlot::ModelPlot(const std::string& name) : name(name){
-#ifdef HAS_SCIPLOT
-    plot.gnuplot("set title \"" + name + "\"");
-    map.gnuplot("set title \"" + name + "\"");
-    map.palette("jet");
-
-    map.size(1600, 1600);
-    map.gnuplot("set size square");
-    map.border().none();
-
-    plot.size(1600, 1200);
-#endif
-}
-
-void ModelPlot::include_point_in_range(const double *X) {
-    for(int x = 0;x < 2;x++) {
-        range[x*2] = std::min(range[x*2], X[x]);
-        range[x*2+1] = std::max(range[x*2+1], X[x]);
-    }
-}
-
-void ModelPlot::include_point_in_range(FLT x, FLT y) {
-    FLT Xs[] = { x, y};
-    include_point_in_range(Xs);
-}
-
-ModelPlot::~ModelPlot() {
-
-    FLT dx = fmax(1, range[1] - range[0]);
-    FLT dy = fmax(1, range[3] - range[2]);
-    range[0] -= .1 * dx;
-    range[1] += .1 * dx;
-    range[2] -= .1 * dy;
-    range[3] += .1 * dy;
-    FLT w = range[1] - range[0], h = range[3] - range[2];
-    FLT x = range[1] - w / 2, y = range[3] - h / 2;
-    w = fmax(w, h);
-    range[0] = x - w / 2;
-    range[1] = x + w / 2.;
-    range[2] = y - w / 2;
-    range[3] = y + w / 2.;
-#ifdef HAS_SCIPLOT
-    map.xrange(range[0], range[1]);
-    map.yrange(range[2], range[3]);
-
-    if (show) {
-        plot.show();
-        map.show();
-    }
-    map.save(name + ".png");
-#endif
-}
-
-void ModelPlot::plot_cov(const cnkalman::KalmanModel &model, double deviations, const std::string &color) {
-#ifdef HAS_SCIPLOT
-        CN_CREATE_STACK_MAT(Pp, 2, 2);
-        CN_CREATE_STACK_MAT(Evec, 2, 2);
-        CN_CREATE_STACK_VEC(Eval, 2);
-        static int idx = 1;
-
-        cnCopy(&model.kalman_state.P, &Pp, 0);
-        cnSVD(&Pp, &Eval, &Evec, 0, (enum cnSVDFlags)0);
-        FLT angle = atan2(_Evec[2], _Evec[0]) *57.2958;
-        FLT v1 = deviations*2*sqrt(_Eval[0]), v2 = deviations*2*sqrt(_Eval[1]);
-        std::stringstream ss;
-        ss << "set obj " << idx++ << " ellipse fc rgb \"" << color << "\" fs transparent solid .1 center "
-           << (model.state[0]) << "," <<
-           (model.state[1]) << " size "
-           << v1 << "," << v2 <<
-           " angle " << angle << " front\n";
-        map.gnuplot(ss.str());
-#endif
-}
