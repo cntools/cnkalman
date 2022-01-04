@@ -27,7 +27,7 @@ int main(int argc, char** argv) {
     defaultRunner.Run(linearModel, show);
     defaultRunner.Run(bearingsOnlyTracking, show);
     {
-        cnkalman::ModelPlot iekfPlot("IEKF vs not", show);
+        cnkalman::ModelPlot iekfPlot("TDOA", show);
 
         ModelRunner iekfRunner1000("iekf", .01, 5000, 10, 1, 500, false);
         iekfRunner1000.run_every_per_meas = { 10, 10, 10, 10, 10, 10, 1};

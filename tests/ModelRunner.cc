@@ -268,8 +268,9 @@ void ModelRunner::Run(cnkalman::ModelPlot& plotter, cnkalman::KalmanModel &model
 #ifdef HAS_SCIPLOT
 
     //plotter.plot.drawWithVecs("lines", origerrors).label(settingsName + " Orig");
-    plotter.plot.drawWithVecs("lines", besterrors).label(settingsName + " Best").dashType(plotter.cnt++ % 12).lineStyle(plotter.cnt % 16);
-    plotter.plot.drawWithVecs("lines", meas_error).label(settingsName + " GT Error").dashType(plotter.cnt++ % 12).lineStyle(plotter.cnt % 16);
+    plotter.cnt++;
+    plotter.plot.drawWithVecs("lines", besterrors).label(settingsName + " Best").dashType(plotter.cnt % 12).lineStyle(plotter.cnt % 16);
+    plotter.plot.drawWithVecs("lines", meas_error).label(settingsName + " GT Error").dashType(plotter.cnt % 12).lineStyle(plotter.cnt % 16);
 
     if (!model.measurementModels.empty() && drawMap ) {
         cnmatrix::Matrix map(250, 250 * 3);
@@ -288,7 +289,7 @@ void ModelRunner::Run(cnkalman::ModelPlot& plotter, cnkalman::KalmanModel &model
                 S.data[0] = sx;
                 S.data[1] = sy;
                 color_offset = 0;
-                for(int z = 0;z < model.measurementModels.size();z++) {
+                for(size_t z = 0;z < model.measurementModels.size();z++) {
                     auto &meas = model.measurementModels[z];
                     auto Z = cnmatrix::Matrix(meas->meas_cnt);
                     meas->predict_measurement(S, Z, 0);
@@ -298,8 +299,8 @@ void ModelRunner::Run(cnkalman::ModelPlot& plotter, cnkalman::KalmanModel &model
                     auto rZ = cnmatrix::Matrix::Like(Z);
                     cnGEMM(iR, Z, 1, 0, 0, rZ, (enum cnGEMMFlags)0);
 
-                    for(int zc = 0;zc < meas->meas_cnt;zc++) {
-                        map(j, i * 3 + (color_offset++) % 3) += rZ(zc) * rZ(zc);
+                    for(size_t zc = 0;zc < meas->meas_cnt;zc++) {
+                        map(j, i * 3 + (color_offset++) % 3) += fabs(rZ(zc));
                     }
                 }
             }
@@ -365,7 +366,8 @@ void ModelRunner::Run(cnkalman::ModelPlot& plotter, cnkalman::KalmanModel &model
     if(draw_gt)
         plotter.map.drawWithVecs("lines", pts_GT).label(settingsName + " GT").lineWidth(3);
     draw_gt = false;
-    plotter.map.drawWithVecs("lines", pts_Filtered).label(settingsName + " Filter").dashType(plotter.cnt++ % 12).lineStyle(plotter.cnt % 16);
+    plotter.cnt++;
+    plotter.map.drawWithVecs("lines", pts_Filtered).label(settingsName + " Filter").dashType(plotter.cnt % 12).lineStyle(plotter.cnt % 16);
 
 #endif
 

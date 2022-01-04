@@ -108,7 +108,7 @@ struct BearingAccel : public cnkalman::KalmanModel {
         v.Velocity.Theta = 1e-1;
         v.Accel[0] = v.Accel[1] = .01;
 
-        cn_set_diag(&Q_out, reinterpret_cast<const double *>(&v));
+        cn_set_diag(&Q_out, reinterpret_cast<const FLT *>(&v));
 	}
 
 	void predict(FLT dt, const struct CnMat &x0, struct CnMat *x1, CnMat* F) override {
@@ -121,7 +121,7 @@ struct BearingAccel : public cnkalman::KalmanModel {
 	    }
 	}
 
-    void sample_state(double dt, const CnMat &x0, CnMat &x1, const struct CnMat *Q) override {
+    void sample_state(FLT dt, const CnMat &x0, CnMat &x1, const struct CnMat *Q) override {
         BearingAccelModel mdl = *reinterpret_cast<BearingAccelModel *>(x1.data);
         FLT G = 8. / landmarks.size();
         mdl.Accel[0] = mdl.Accel[1] = 0;

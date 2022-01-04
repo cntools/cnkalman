@@ -1,7 +1,7 @@
 #include "cnkalman/ModelPlot.h"
 
 namespace cnkalman {
-    ModelPlot::ModelPlot(const std::string &name, bool show) : name(name), show(show) {
+  ModelPlot::ModelPlot(const std::string &name, bool show) : show(show), name(name) {
 #ifdef HAS_SCIPLOT
         plot.gnuplot("set title \"" + name + "\"");
         map.gnuplot("set title \"" + name + "\"");
@@ -15,7 +15,7 @@ namespace cnkalman {
 #endif
     }
 
-    void ModelPlot::include_point_in_range(const double *X) {
+    void ModelPlot::include_point_in_range(const FLT *X) {
         if(lock_range) return;
 
         for (int x = 0; x < 2; x++) {
@@ -67,10 +67,11 @@ namespace cnkalman {
         }
         plot.save(name + "-plot.svg");
         map.save(name + ".svg");
+        map.save(name + ".png");
 #endif
     }
 
-    void ModelPlot::plot_cov(const cnkalman::KalmanModel &model, double deviations, const std::string &color) {
+    void ModelPlot::plot_cov(const cnkalman::KalmanModel &model, FLT deviations, const std::string &color) {
 #ifdef HAS_SCIPLOT
         CN_CREATE_STACK_MAT(Pp, 2, 2);
         CN_CREATE_STACK_MAT(Evec, 2, 2);
