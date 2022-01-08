@@ -115,6 +115,7 @@ void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, cnkalma
 	// k->P = F * k->P * F^T + Q
 	if(k->state_variance_per_second.rows > 0) {
 		cn_add_diag(Pk1_k1, &k->state_variance_per_second, dt * dt);
+		assert(sane_covariance(Pk1_k1));
 	}
 
 	struct CnMat* Qp = 0;
@@ -122,8 +123,10 @@ void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, cnkalma
 	if(k->Q_fn) {
 		k->Q_fn(k->user, dt, x, &Q);
 		Qp = &Q;
+		assert(sane_covariance(&Q));
 	}
 	cn_ABAt_add(Pk1_k1, F, Pk1_k1, Qp);
+	assert(sane_covariance(Pk1_k1));
 
 	// printf("!!!! %f\n", cnDet(Pk1_k1));
 	// assert(cnDet(Pk1_k1) >= 0);
@@ -208,7 +211,7 @@ static void cnkalman_update_covariance(cnkalman_state_t *k, const cnkalman_gain_
 	cnCopy(Pk_k, &tmp, 0);
 
 	CN_CREATE_STACK_MAT(kRkt, dims, dims);
-	bool use_joseph_form = false;// R->rows == R->cols;
+	bool use_joseph_form = R->rows == R->cols;
 	if (use_joseph_form) {
 	  cn_ABAt_add(&kRkt, K, R, 0);
 		for (int i = 0; i < kRkt.rows; i++) {
@@ -464,8 +467,13 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
     int state_cnt = k->state_cnt;
 
     FLT dt = t - k->t;
-    //assert(dt >= 0);
 
+	// Allow very small negative integrations
+    assert(dt >= -.01);
+	if(dt < 0) {
+		dt = 0;
+		t = k->t;
+	}
     FLT result = 0;
 
     // Setup the R matrix.
@@ -473,12 +481,6 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 		assert(false);
 		adaptive = false;
 	}
-
-	// Anything coming in this soon is liable to spike stuff since dt is so small
-    //if (dt < 1e-5) {
-    //    dt = 0;
-    //    t = k->t;
-    //}
 
 	CnMat *x_k_k = &k->state;
 
@@ -539,6 +541,7 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 	}
 
 	cnkalman_update_covariance(k, &K, H, R);
+	assert(sane_covariance(&k->P));
 
 	if (adaptive) {
         calculate_adaptive_covariance(mk, user, Z, R, &Pm, H);
