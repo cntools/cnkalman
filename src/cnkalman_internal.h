@@ -12,7 +12,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
 void cnkalman_find_k(cnkalman_state_t *k, cnkalman_gain_matrix *K, const struct CnMat *H,
                                   const CnMat *R);
 
-void cn_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines);
+void kalman_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines);
 
 static inline bool sane_covariance(const CnMat *P) {
 #ifndef NDEBUG

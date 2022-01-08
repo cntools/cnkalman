@@ -112,6 +112,8 @@ typedef struct cnkalman_state_s {
     enum cnkalman_jacobian_mode transition_jacobian_mode;
 
 	kalman_transition_model_fn_t Transition_fn;
+	struct CnMat state_variance_per_second;
+
 	kalman_process_noise_fn_t Q_fn;
 	kalman_normalize_fn_t normalize_fn;
 

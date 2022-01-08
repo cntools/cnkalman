@@ -25,7 +25,7 @@ void cnkalman_set_logging_level(cnkalman_state_t *k, int v) { k->log_level = v; 
 void cnkalman_linear_update(struct CnMat *F, const struct CnMat *x0, struct CnMat *x1) {
 	cnGEMM(F, x0, 1, 0, 0, x1, 0);
 }
-void cn_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines) {
+void kalman_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, const CnMat *M, bool newlines) {
 	if (k->log_level < ll) {
 		return;
 	}
@@ -40,17 +40,17 @@ void cn_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, const C
 		for (unsigned j = 0; j < M->cols; j++) {
 			FLT v = cnMatrixGet(M, i, j);
 			if (v == 0)
-				fprintf(stdout, "         0,\t");
+				fprintf(stdout, "             0, ");
 			else
-				fprintf(stdout, "%+7.7e,\t", v);
+				fprintf(stdout, "%+7.7e,", v);
 		}
 		if (newlines && M->cols > 1)
 			fprintf(stdout, "\n");
 	}
 	fprintf(stdout, "\n");
 }
-static void cn_print_mat(cnkalman_state_t *k, const char *name, const CnMat *M, bool newlines) {
-	cn_print_mat_v(k, KALMAN_LOG_LEVEL, name, M, newlines);
+static void kalman_print_mat(cnkalman_state_t *k, const char *name, const CnMat *M, bool newlines) {
+	kalman_print_mat_v(k, KALMAN_LOG_LEVEL, name, M, newlines);
 }
 
 void user_is_q(void *user, FLT t, const struct CnMat *x, CnMat *Q_out) {
@@ -62,8 +62,10 @@ CN_EXPORT_FUNCTION void cnkalman_state_reset(cnkalman_state_t *k) {
 	k->t = 0;
 	cn_set_zero(&k->P);
 
-	k->Q_fn(k->user, 10, &k->state, &k->P);
-	cn_print_mat(k, "initial Pk_k", &k->P, true);
+	cnkalman_predict_state(10, k);
+	k->t = 0;
+
+	kalman_print_mat(k, "initial Pk_k", &k->P, true);
 }
 
 CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char *name,
@@ -80,7 +82,7 @@ void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt, kalman_transitio
 	memset(k, 0, sizeof(*k));
 
 	k->state_cnt = (int)state_cnt;
-	k->Q_fn = q_fn ? q_fn : user_is_q;
+	k->Q_fn = q_fn;
 
 	k->P = cnMatCalloc(k->state_cnt, k->state_cnt);
 
@@ -104,23 +106,32 @@ void cnkalman_state_free(cnkalman_state_t *k) {
 	k->state.data = 0;
 }
 
-void cnkalman_predict_covariance(FLT t, const CnMat *F, const CnMat *x, cnkalman_state_t *k) {
+void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, cnkalman_state_t *k) {
 	int dims = k->state_cnt;
 
 	CnMat *Pk1_k1 = &k->P;
-	cn_print_mat(k, "Pk-1_k-1", Pk1_k1, 1);
-	CN_CREATE_STACK_MAT(Q, dims, dims);
-	k->Q_fn(k->user, t, x, &Q);
+	kalman_print_mat(k, "Pk-1_k-1", Pk1_k1, 1);
 
 	// k->P = F * k->P * F^T + Q
-	cn_ABAt_add(Pk1_k1, F, Pk1_k1, &Q);
+	if(k->state_variance_per_second.rows > 0) {
+		cn_add_diag(Pk1_k1, &k->state_variance_per_second, dt * dt);
+	}
+
+	struct CnMat* Qp = 0;
+	CN_CREATE_STACK_MAT(Q, dims, dims);
+	if(k->Q_fn) {
+		k->Q_fn(k->user, dt, x, &Q);
+		Qp = &Q;
+	}
+	cn_ABAt_add(Pk1_k1, F, Pk1_k1, Qp);
+
 	// printf("!!!! %f\n", cnDet(Pk1_k1));
 	// assert(cnDet(Pk1_k1) >= 0);
 	if (k->log_level >= KALMAN_LOG_LEVEL) {
-		CN_KALMAN_VERBOSE(110, "T: %f", t);
-		cn_print_mat(k, "Q", &Q, 1);
-		cn_print_mat(k, "F", F, 1);
-		cn_print_mat(k, "Pk1_k-1", Pk1_k1, 1);
+		CN_KALMAN_VERBOSE(110, "T: %f", dt);
+		kalman_print_mat(k, "Q", Qp, 1);
+		kalman_print_mat(k, "F", F, 1);
+		kalman_print_mat(k, "Pk1_k-1", Pk1_k1, 1);
 	}
 	CN_FREE_STACK_MAT(Q);
 }
@@ -136,8 +147,8 @@ void cnkalman_find_k(cnkalman_state_t *k, cnkalman_gain_matrix *K, const struct 
 	cnGEMM(Pk_k, H, 1, 0, 0, &Pk_k1Ht, CN_GEMM_FLAG_B_T);
 	CN_CREATE_STACK_MAT(S, H->rows, H->rows);
 
-	cn_print_mat(k, "H", H, 1);
-	cn_print_mat(k, "R", R, 1);
+	kalman_print_mat(k, "H", H, 1);
+	kalman_print_mat(k, "R", R, 1);
 
 	// S = H * P_k|k-1 * H^T + R
 	if (R->cols == 1) {
@@ -150,8 +161,8 @@ void cnkalman_find_k(cnkalman_state_t *k, cnkalman_gain_matrix *K, const struct 
 
 	assert(cn_is_finite(&S));
 
-	cn_print_mat(k, "Pk_k1Ht", &Pk_k1Ht, 1);
-	cn_print_mat(k, "S", &S, 1);
+	kalman_print_mat(k, "Pk_k1Ht", &Pk_k1Ht, 1);
+	kalman_print_mat(k, "S", &S, 1);
 
 	CN_CREATE_STACK_MAT(iS, H->rows, H->rows);
 	FLT diag = 0, non_diag = 0;
@@ -173,11 +184,11 @@ void cnkalman_find_k(cnkalman_state_t *k, cnkalman_gain_matrix *K, const struct 
 		cnInvert(&S, &iS, CN_INVERT_METHOD_LU);
 	}
 	assert(cn_is_finite(&iS));
-	cn_print_mat(k, "iS", &iS, 1);
+	kalman_print_mat(k, "iS", &iS, 1);
 
 	// K = Pk_k1Ht * iS
 	cnGEMM(&Pk_k1Ht, &iS, 1, 0, 0, K, 0);
-	cn_print_mat(k, "K", K, 1);
+	kalman_print_mat(k, "K", K, 1);
 }
 
 static void cnkalman_update_covariance(cnkalman_state_t *k, const cnkalman_gain_matrix *K,
@@ -227,12 +238,12 @@ static void cnkalman_update_covariance(cnkalman_state_t *k, const cnkalman_gain_
 	assert(cn_is_finite(Pk_k));
 	if (k->log_level >= KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO gain\t");
-		cn_print_mat(k, "K", K, true);
+		kalman_print_mat(k, "K", K, true);
 
-		cn_print_mat(k, "ikh", &ikh, true);
+		kalman_print_mat(k, "ikh", &ikh, true);
 
 		fprintf(stdout, "INFO new Pk_k\t");
-		cn_print_mat(k, "Pk_k", Pk_k, true);
+		kalman_print_mat(k, "Pk_k", Pk_k, true);
 	}
 	CN_FREE_STACK_MAT(tmp);
 	CN_FREE_STACK_MAT(ikh);
@@ -243,7 +254,7 @@ static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t
 	// X_k|k-1 = Predict(X_K-1|k-1)
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_predict from ");
-		cn_print_mat(k, "x_t0_t0", x_t0_t0, false);
+		kalman_print_mat(k, "x_t0_t0", x_t0_t0, false);
 	}
 	assert(cn_as_const_vector(x_t0_t0) != cn_as_const_vector(x_t0_t1));
 	if (t == k->t) {
@@ -254,7 +265,7 @@ static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t
 	}
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_predict to   ");
-		cn_print_mat(k, "x_t0_t1", x_t0_t1, false);
+		kalman_print_mat(k, "x_t0_t1", x_t0_t1, false);
 	}
 	if (k->datalog) {
 		CN_CREATE_STACK_MAT(tmp, x_t0_t0->rows, x_t0_t1->cols);
@@ -362,6 +373,7 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 		cnGEMM(rtn, x, -1, Z, 1, y, 0);
 	}
 	assert(!rtn || cn_is_finite(rtn));
+	assert(cn_is_finite(y));
 
 	return rtn;
 }
@@ -427,12 +439,12 @@ calculate_adaptive_covariance(cnkalman_meas_model_t *mk, void *user, const struc
     cnGEMM(Pm, H, 1, 0, 0, &Pk_k1Ht, CN_GEMM_FLAG_B_T);
     cnGEMM(H, &Pk_k1Ht, b, &yyt, b, &scaled_eTeHPkHt, 0);
 
-    cn_print_mat_v(k, 200, "PkHt", &Pk_k1Ht, true);
-    cn_print_mat_v(k, 200, "yyt", &yyt, true);
+    kalman_print_mat_v(k, 200, "PkHt", &Pk_k1Ht, true);
+    kalman_print_mat_v(k, 200, "yyt", &yyt, true);
 
     cnAddScaled(R, R, a, &scaled_eTeHPkHt, 1);
 
-    cn_print_mat_v(k, 200, "Adaptive R", R, true);
+    kalman_print_mat_v(k, 200, "Adaptive R", R, true);
 
     CN_FREE_STACK_MAT(Pk_k1Ht);CN_FREE_STACK_MAT(yyt);CN_FREE_STACK_MAT(scaled_eTeHPkHt);
 }
@@ -463,10 +475,10 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 	}
 
 	// Anything coming in this soon is liable to spike stuff since dt is so small
-    if (dt < 1e-5) {
-        dt = 0;
-        t = k->t;
-    }
+    //if (dt < 1e-5) {
+    //    dt = 0;
+    //    t = k->t;
+    //}
 
 	CnMat *x_k_k = &k->state;
 
@@ -483,7 +495,7 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_predict_update_state_extended t=%f dt=%f ", t, dt);
-		cn_print_mat(k, "Z", Z, false);
+		kalman_print_mat(k, "Z", Z, false);
 		fprintf(stdout, "\n");
 	}
 
@@ -523,7 +535,7 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_update to    ");
-		cn_print_mat(k, "x1", x_k_k, false);
+		kalman_print_mat(k, "x1", x_k_k, false);
 	}
 
 	cnkalman_update_covariance(k, &K, H, R);

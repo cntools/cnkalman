@@ -103,12 +103,12 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
             cn_as_vector(&iR)[i] = cn_as_const_vector(R)[i] == 0 ? 0 : 1. / cn_as_const_vector(R)[i];
         }
     }
-    // cn_print_mat_v(k, 100, "iR", &iR, true);
+    // kalman_print_mat_v(k, 100, "iR", &iR, true);
 
     CN_CREATE_STACK_MAT(iP, state_cnt, state_cnt);
     cnInvert(&k->P, &iP, CN_INVERT_METHOD_LU);
     assert(sane_covariance(&k->P));
-    // cn_print_mat_v(k, 100, "iP", &iP, true);
+    // kalman_print_mat_v(k, 100, "iP", &iP, true);
 
     assert(cn_is_finite(&iP));
     assert(cn_is_finite(&iR));
@@ -207,7 +207,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
             fa = calculate_v(&y, &x_diff, &iR, &iP, &meas_part, &delta_part);
             if (k->log_level >= 1000) {
                 fprintf(stdout, "%3f: %7.7f ", scale, fa);
-                cn_print_mat_v(k, 1000, "at x", &xn, false);
+                kalman_print_mat_v(k, 1000, "at x", &xn, false);
             }
             //assert(fa >= 0);
 
@@ -242,7 +242,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         if (k->log_level > 1000) {
             fprintf(stdout, "%3d: %7.7f / %7.7f (%f, %f, %f) ", iter, initial_norm, current_norm, scale, m,
                     cnNorm(&x_update));
-            cn_print_mat_v(k, 1000, "new x", &x_i, false);
+            kalman_print_mat_v(k, 1000, "new x", &x_i, false);
         }
         if (stop_reason == cnkalman_update_extended_termination_reason_none)
             stop_reason =

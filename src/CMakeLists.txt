@@ -1,4 +1,4 @@
-add_library(cnkalman kalman.c ./model.cc ./numerical_diff.c ./iekf.c ./ModelPlot.cc)
+add_library(cnkalman STATIC kalman.c ./model.cc ./numerical_diff.c ./iekf.c ./ModelPlot.cc)
 
 target_include_directories(cnkalman PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include/>
