@@ -47,6 +47,10 @@ typedef void (*kalman_process_noise_fn_t)(void *user, FLT dt, const struct CnMat
 typedef bool (*kalman_measurement_model_fn_t)(void *user, const struct CnMat *Z, const struct CnMat *x_t,
 											  struct CnMat *y, struct CnMat *H_k);
 
+// Given a state x0 and a model update Ky, generate the new state. Typically this is x1 = x0 + Ky
+typedef void (*kalman_update_model_fn_t)(void *user, const struct CnMat *x0, struct CnMat *Ky, struct CnMat *x1);
+typedef void (*kalman_error_state_model_fn_t)(void *user, const struct CnMat *x_t, struct CnMat *X_jac_E, struct CnMat *E_jac_X);
+
 typedef struct term_criteria_t {
 	size_t max_iterations;
 
@@ -116,6 +120,9 @@ typedef struct cnkalman_state_s {
 
 	kalman_process_noise_fn_t Q_fn;
 	kalman_normalize_fn_t normalize_fn;
+	kalman_update_model_fn_t Update_fn;
+	kalman_error_state_model_fn_t ErrorState_fn;
+	size_t error_state_size;
 
 	// Store the current covariance matrix (state_cnt x state_cnt)
 	struct CnMat P;
@@ -139,7 +146,6 @@ typedef struct cnkalman_meas_model {
 
 	const char *name;
 	kalman_measurement_model_fn_t Hfn;
-
 	bool adaptive;
 
 	struct term_criteria_t term_criteria;
@@ -207,8 +213,15 @@ cnkalman_predict_update_state_extended(FLT t, cnkalman_state_t *k, const struct 
  *
  * @returns Returns the average residual error
  */
-CN_EXPORT_FUNCTION void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt, kalman_transition_model_fn_t F,
-											  kalman_process_noise_fn_t q_fn, void *user, FLT *state);
+CN_EXPORT_FUNCTION void cnkalman_state_init(cnkalman_state_t *k, size_t state_cnt,
+											kalman_transition_model_fn_t F, kalman_process_noise_fn_t q_fn,
+											void *user, FLT *state);
+
+CN_EXPORT_FUNCTION void cnkalman_error_state_init(cnkalman_state_t *k, size_t state_cnt, size_t error_state_cnt,
+												  kalman_transition_model_fn_t F,
+												  kalman_process_noise_fn_t q_fn,
+												  kalman_error_state_model_fn_t Err_F,
+												  void *user, FLT *state);
 
 CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char *name,
 												   cnkalman_meas_model_t *mk, kalman_measurement_model_fn_t Hfn);
