@@ -66,6 +66,29 @@ cnkalman_termination_criteria(cnkalman_state_t *k, const struct term_criteria_t 
     return cnkalman_update_extended_termination_reason_none;
 }
 
+static void cnkalman_find_error_state(void* user, cnkalman_state_t *k, const CnMat* x1, const CnMat* x0, CnMat* error_state) {
+	CN_CREATE_STACK_VEC(verify_x, k->state_cnt);
+	if (k->ErrorState_fn) {
+		k->ErrorState_fn(user, x0, x1, error_state, 0);
+		k->Update_fn(user, x0, error_state, &verify_x, 0);
+		cn_elementwise_subtract(&verify_x, x1, &verify_x);
+		FLT err = cn_sum(&verify_x);
+		assert(cn_sum(&verify_x) < 1e-4);
+	} else {
+		cnSub(error_state, x1, x0);
+	}
+}
+
+void cnkalman_update_state(void* user, cnkalman_state_t *k, const CnMat* x0, FLT scale, const CnMat* error_state, CnMat* x1) {
+	if(k->Update_fn) {
+		CN_CREATE_STACK_MAT(error_state_delta_scaled, k->error_state_size, 1);
+		cnScale(&error_state_delta_scaled, error_state, scale);
+		k->Update_fn(user, x0, &error_state_delta_scaled, x1, 0);
+	} else {
+		cnAddScaled(x1, error_state, scale, x0, 1);
+	}
+}
+
 // Extended Kalman Filter Modifications Based on an Optimization View Point
 // https://www.diva-portal.org/smash/get/diva2:844060/FULLTEXT01.pdf
 // Note that in this document, 'y' is the measurement; which we refer to as 'Z'
@@ -88,7 +111,8 @@ cnkalman_termination_criteria(cnkalman_state_t *k, const struct term_criteria_t 
 FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
                                          cnkalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
                                          CnMat *H, CnMat *x_k_k, struct cnkalman_update_extended_stats_t *stats) {
-    int state_cnt = k->state_cnt;
+	int state_cnt = k->state_cnt;
+	int filter_cnt = k->error_state_size;
     int meas_cnt = Z->rows;
 
     CN_CREATE_STACK_MAT(y, meas_cnt, 1);
@@ -105,7 +129,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
     }
     // kalman_print_mat_v(k, 100, "iR", &iR, true);
 
-    CN_CREATE_STACK_MAT(iP, state_cnt, state_cnt);
+    CN_CREATE_STACK_MAT(iP, filter_cnt, filter_cnt);
     cnInvert(&k->P, &iP, CN_INVERT_METHOD_LU);
 	assert(sane_covariance(&k->P));
     // kalman_print_mat_v(k, 100, "iP", &iP, true);
@@ -123,12 +147,15 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
     int max_iter = mk->term_criteria.max_iterations;
     FLT meas_part, delta_part;
     CN_CREATE_STACK_MAT(Hxdiff, Z->rows, 1);
-    CN_CREATE_STACK_MAT(x_update, state_cnt, 1);
+	CN_CREATE_STACK_MAT(error_state_delta, filter_cnt, 1);
+	CN_CREATE_STACK_MAT(error_state_delta_scaled, filter_cnt, 1);
     CN_CREATE_STACK_MAT(xn, x_i.rows, x_i.cols);
-    CN_CREATE_STACK_MAT(x_diff, state_cnt, 1);
+    CN_CREATE_STACK_MAT(error_state, filter_cnt, 1);
     CN_CREATE_STACK_MAT(iRy, meas_cnt, 1);
-    CN_CREATE_STACK_MAT(iPdx, state_cnt, 1);
-    CN_CREATE_STACK_MAT(dVt, state_cnt, 1);
+    CN_CREATE_STACK_MAT(iPdx, filter_cnt, 1);
+    CN_CREATE_STACK_MAT(dVt, filter_cnt, 1);
+
+	CN_CREATE_STACK_VEC(verify_x, state_cnt);
 
     for (iter = 0; iter < max_iter && stop_reason == cnkalman_update_extended_termination_reason_none; iter++) {
         // Find the residual y and possibly also the jacobian H. The user could have passed one in as 'user', or given
@@ -147,18 +174,25 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         }
         last_norm = current_norm;
 
-        cnSub(&x_diff, x_k_k1, &x_i);
-        current_norm = calculate_v(&y, &x_diff, &iR, &iP, &meas_part, iter == 0 ? 0 : &delta_part);
+		if(iter != 0) {
+			cnkalman_find_error_state(user, k, x_k_k1, &x_i, &error_state);
+		}
+
+        current_norm = calculate_v(&y, &error_state, &iR, &iP, &meas_part, iter == 0 ? 0 : &delta_part);
         assert(current_norm >= 0);
 
-        cnGEMM(&iP, &x_diff, 1, 0, 0, &iPdx, 0);
 
         if (R->cols > 1) {
             cnGEMM(&iR, &y, 1, 0, 0, &iRy, 0);
         } else {
             cnElementwiseMultiply(&iRy, &iR, &y);
         }
-        cnGEMM(H, &iRy, -1, &iPdx, -1, &dVt, CN_GEMM_FLAG_A_T);
+
+		// dVt = H * (R^-1 * y)' - iP * error_state
+		if(iter != 0) {
+			cnGEMM(&iP, &error_state, 1, 0, 0, &iPdx, 0);
+		}
+		cnGEMM(H, &iRy, -1, &iPdx, -1, &dVt, CN_GEMM_FLAG_A_T);
 
         if (iter == 0) {
             initial_norm = current_norm;
@@ -177,13 +211,15 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
             goto end_of_loop;
         }
 
-        // x_update = K * (z - y - H * Δx)
-        cnGEMM(H, &x_diff, 1, 0, 0, &Hxdiff, 0);
-        cnSub(&y, &y, &Hxdiff);
-        cnGEMM(K, &y, 1, &x_diff, 1, &x_update, 0);
+        // error_state_delta = K * (z - y - H * Δx)
+		if(iter != 0) {
+			cnGEMM(H, &error_state, 1, 0, 0, &Hxdiff, 0);
+			cnSub(&y, &y, &Hxdiff);
+		}
+        cnGEMM(K, &y, 1, &error_state, 1, &error_state_delta, 0);
 
         FLT scale = 1.;
-        FLT m = cnDot(&dVt, &x_update);
+        FLT m = cnDot(&dVt, &error_state_delta);
         if (fabs(m) < mk->term_criteria.mtol) {
             stop_reason = cnkalman_update_extended_termination_reason_mtol;
             break;
@@ -196,15 +232,17 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         bool exit_condition = false;
         while (!exit_condition) {
             exit_condition = true;
-            cnAddScaled(&xn, &x_update, scale, &x_i, 1);
+
+			cnkalman_update_state(user, k, &x_i, scale, &error_state_delta, &xn);
+
             mk->Hfn(user, Z, &xn, &y, 0);
             if (stats) {
                 stats->fevals++;
             }
 
-            cnSub(&x_diff, x_k_k1, &xn);
+			cnkalman_find_error_state(user, k, x_k_k1, &xn, &error_state);
 
-            fa = calculate_v(&y, &x_diff, &iR, &iP, &meas_part, &delta_part);
+            fa = calculate_v(&y, &error_state, &iR, &iP, &meas_part, &delta_part);
             if (k->log_level >= 1000) {
                 fprintf(stdout, "%3f: %7.7f ", scale, fa);
                 kalman_print_mat_v(k, 1000, "at x", &xn, false);
@@ -231,7 +269,8 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
             stats->total_stats->step_cnt++;
             stats->total_stats->step_acc += scale;
         }
-        cnAddScaled(&x_i, &x_i, 1, &x_update, scale);
+
+		cnkalman_update_state(user, k, &x_i, scale, &error_state_delta, &x_i);
 
         if (k->normalize_fn) {
             k->normalize_fn(k->user, &x_i);
@@ -241,7 +280,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         end_of_loop:
         if (k->log_level > 1000) {
             fprintf(stdout, "%3d: %7.7f / %7.7f (%f, %f, %f) ", iter, initial_norm, current_norm, scale, m,
-                    cnNorm(&x_update));
+                    cnNorm(&error_state_delta));
             kalman_print_mat_v(k, 1000, "new x", &x_i, false);
         }
         if (stop_reason == cnkalman_update_extended_termination_reason_none)
@@ -283,7 +322,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
     }
 
     CN_FREE_STACK_MAT(Hxdiff);
-    CN_FREE_STACK_MAT(x_update);
+    CN_FREE_STACK_MAT(error_state_delta);
     CN_FREE_STACK_MAT(xn);
     CN_FREE_STACK_MAT(x_diff);
     CN_FREE_STACK_MAT(iRy);

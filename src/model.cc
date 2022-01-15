@@ -173,7 +173,7 @@ namespace cnkalman {
         assert(Zs.size() == Rs.size());
         assert(Zs.size() == measurementModels.size());
         size_t meas_cnt = 0;
-        size_t min_iterations = 0;
+        int min_iterations = 0;
         bool debugJac = false;
         for(auto& meas : measurementModels) {
             meas_cnt += meas->meas_cnt;

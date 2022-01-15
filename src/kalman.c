@@ -335,7 +335,7 @@ static bool numeric_jacobian(enum cnkalman_jacobian_mode mode, kalman_measuremen
 }
 
 static inline bool compare_jacobs(const char* label, const CnMat *H, const CnMat *H_calc, const CnMat *y, const CnMat *Z) {
-	bool needsPrint = false;
+	bool needsPrint = true;
 	fprintf(stderr, "FJAC DEBUG BEGIN %s %2dx%2d\n", label, H->rows, H->cols);
 
     for (int j = 0; j < H->cols; j++) {
@@ -379,8 +379,10 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 	}
 
 	CnMat *rtn = 0;
+	CN_CREATE_STACK_MAT(HFullState, Z->rows, k->ErrorState_fn ? k->state_cnt : 0);
+
 	if (Hfn) {
-        bool okay = Hfn(user, Z, x, y, H);
+        bool okay = Hfn(user, Z, x, y, k->ErrorState_fn ? &HFullState : H);
 		if (okay == false) {
 			return 0;
 		}
@@ -404,6 +406,14 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 		rtn = (struct CnMat *)user;
 		cnGEMM(rtn, x, -1, Z, 1, y, 0);
 	}
+
+	if(k->Update_fn && rtn && H) {
+		CN_CREATE_STACK_MAT(Hxsx, k->state_cnt, k->error_state_size);
+		k->Update_fn(user, x, 0, 0, &Hxsx);
+		cnGEMM(Hfn ? &HFullState : rtn, &Hxsx, 1, 0, 0, H, 0);
+		rtn = H;
+	}
+
 	assert(!rtn || cn_is_finite(rtn));
 	assert(cn_is_finite(y));
 
@@ -415,7 +425,7 @@ void cnkalman_predict_state(FLT t, cnkalman_state_t *k) {
     assert(dt >= 0);
 
     int state_cnt = k->state_cnt;
-	int filter_cnt = k->ErrorState_fn ? k->error_state_size : state_cnt;
+	int filter_cnt = k->error_state_size;
     CnMat *x_k_k = &k->state;
 
     CN_CREATE_STACK_MAT(x_k1_k1, state_cnt, 1);
@@ -423,12 +433,29 @@ void cnkalman_predict_state(FLT t, cnkalman_state_t *k) {
 
 
     if (dt > 0) {
-        CN_CREATE_STACK_MAT(F, state_cnt, state_cnt);
-        cn_set_constant(&F, NAN);
+		size_t f_size = k->error_state_transition ? k->error_state_size : state_cnt;
+        CN_CREATE_STACK_MAT(F, f_size, f_size);
+		CN_CREATE_STACK_MAT(FHxsx, k->error_state_size, k->error_state_size);
+		cn_set_constant(&F, NAN);
 
         cnkalman_predict(t, k, &x_k1_k1, x_k_k, &F);
 
-        if(k->transition_jacobian_mode != cnkalman_jacobian_mode_user_fn) {
+		assert(cn_is_finite(&F));
+
+		CnMat* FP = &F;
+		if(k->Update_fn && k->error_state_transition == false) {
+			CN_CREATE_STACK_MAT(OldXOlde, state_cnt, k->error_state_size);
+			k->Update_fn(k->user, &x_k1_k1, 0, 0, &OldXOlde);
+			CN_CREATE_STACK_MAT(NewENewX, k->error_state_size, state_cnt);
+			k->ErrorState_fn(k->user, x_k_k, 0, 0, &NewENewX);
+
+			CN_CREATE_STACK_MAT(FOldXOldE, F.rows, OldXOlde.cols);
+			cnGEMM(&F, &OldXOlde, 1, 0, 0, &FOldXOldE, 0);
+			cnGEMM(&NewENewX, &FOldXOldE, 1, 0, 0, &FHxsx, 0);
+			FP = &FHxsx;
+		}
+
+		if(k->transition_jacobian_mode != cnkalman_jacobian_mode_user_fn) {
             CN_CREATE_STACK_MAT(F_calc, F.rows, F.cols);
 
             numeric_jacobian_predict(k, k->transition_jacobian_mode, dt, &x_k1_k1, &F_calc);
@@ -440,24 +467,6 @@ void cnkalman_predict_state(FLT t, cnkalman_state_t *k) {
             cn_matrix_copy(&F, &F_calc);
         }
 
-        assert(cn_is_finite(&F));
-		CN_CREATE_STACK_MAT(FHxsx, k->error_state_size, k->error_state_size);
-		CnMat* FP = &F;
-		if(k->ErrorState_fn) {
-			CN_CREATE_STACK_MAT(OldXOlde, state_cnt, k->error_state_size);
-			k->ErrorState_fn(k->user, &x_k1_k1, &OldXOlde, 0);
-			CN_CREATE_STACK_MAT(NewXNewE, state_cnt, k->error_state_size);
-			CN_CREATE_STACK_MAT(NewENewX, k->error_state_size, state_cnt);
-			k->ErrorState_fn(k->user, x_k_k, &NewXNewE, 0);
-
-			cnInvert(&NewXNewE, &NewENewX, CN_INVERT_METHOD_SVD);
-			CN_CREATE_STACK_MAT(FOldXOldE, F.rows, OldXOlde.cols);
-			cnGEMM(&F, &OldXOlde, 1, 0, 0, &FOldXOldE, 0);
-			cnGEMM(&NewENewX, &FOldXOldE, 1, 0, 0, &FHxsx, 0);
-			FP = &FHxsx;
-		} else {
-
-		}
         // Run predict
 		cnkalman_predict_covariance(dt, FP, x_k_k, k);
         CN_FREE_STACK_MAT(F);
@@ -511,7 +520,7 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 	bool adaptive = mk->adaptive;
 
     int state_cnt = k->state_cnt;
-	int filter_cnt = k->ErrorState_fn ? k->error_state_size : state_cnt;
+	int filter_cnt = k->error_state_size;
 
     FLT dt = t - k->t;
 
@@ -549,8 +558,7 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 	}
 
 	CN_CREATE_STACK_MAT(K, filter_cnt, Z->rows);
-	CN_CREATE_STACK_MAT(HStorage, Z->rows, state_cnt);
-	CN_CREATE_STACK_MAT(HHxsx, Z->rows, k->error_state_size);
+	CN_CREATE_STACK_MAT(HStorage, Z->rows, filter_cnt);
 	struct CnMat *H = &HStorage;
 
 	if (mk->term_criteria.max_iterations > 0) {
@@ -561,12 +569,6 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
         CN_CREATE_STACK_MAT(y, Z->rows, Z->cols);
 		H = cnkalman_find_residual(mk, user, Z, &x_k_k1, &y, H);
 
-		if(k->ErrorState_fn) {
-			CN_CREATE_STACK_MAT(Hxsx, state_cnt, k->error_state_size);
-			k->ErrorState_fn(user, &x_k_k1, &Hxsx, 0);
-			cnGEMM(H, &Hxsx, 1, 0, 0, &HHxsx, 0);
-			H = &HHxsx;
-		}
 		if (H == 0) {
 			return -1;
 		}
@@ -575,13 +577,9 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
 		cnkalman_find_k(k, &K, H, R);
 
 		// Calculate the next state
-		if(k->Update_fn == 0) {
-			cnGEMM(&K, &y, 1, &x_k_k1, 1, x_k_k, 0);
-		} else {
-			CN_CREATE_STACK_VEC(Ky, filter_cnt);
-			cnGEMM(&K, &y, 1, 0, 0, &Ky, 0);
-			k->Update_fn(user, &x_k_k1, &Ky, x_k_k);
-		}
+		CN_CREATE_STACK_VEC(Ky, filter_cnt);
+		cnGEMM(&K, &y, 1, 0, 0, &Ky, 0);
+		cnkalman_update_state(user, k, &x_k_k1, 1, &Ky, x_k_k);
 		result = cnNorm2(&y);
 
 		if(stats) {

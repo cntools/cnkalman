@@ -16,6 +16,7 @@ improve on the very in depth [tutorial by Roger Labbe](https://github.com/rlabbe
 
 - Support for [extended kalman filter](https://en.wikipedia.org/wiki/Extended_Kalman_filter), [linear kalman filters](https://en.wikipedia.org/wiki/Kalman_filter), and [Iterate Extended Kalman Filter](https://en.wikipedia.org/wiki/Extended_Kalman_filter#Iterated_extended_Kalman_filter) ([paper](https://www.diva-portal.org/smash/get/diva2:844060/FULLTEXT01.pdf))
 - Support for [adaptive measurement covariance](https://arxiv.org/pdf/1702.00884.pdf)
+- Support for [error-state kalman filter](http://www.iri.upc.edu/people/jsola/JoanSola/objectes/notes/kinematics.pdf)  
 - Built-in support for numerical-based jacobians, and an option to debug user provided jacobians by using 
   the numerical results
 - Minimal heap allocations  

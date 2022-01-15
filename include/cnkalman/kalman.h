@@ -47,12 +47,27 @@ typedef void (*kalman_process_noise_fn_t)(void *user, FLT dt, const struct CnMat
 typedef bool (*kalman_measurement_model_fn_t)(void *user, const struct CnMat *Z, const struct CnMat *x_t,
 											  struct CnMat *y, struct CnMat *H_k);
 
-// Given a state x0 and a model update Ky, generate the new state. Typically this is x1 = x0 + Ky
-typedef void (*kalman_update_model_fn_t)(void *user, const struct CnMat *x0, struct CnMat *Ky, struct CnMat *x1);
-typedef void (*kalman_error_state_model_fn_t)(void *user, const struct CnMat *x_t, struct CnMat *X_jac_E, struct CnMat *E_jac_X);
+/***
+ * Given a state x0 and a model update Ky, generate the new state. Typically this is ~ x1 = x0 + error_state. Also
+ * optionally generate the jacobian of the operation; d(x1)/d(error_state).
+ */
+typedef void (*kalman_integrate_update_fn_t)(void *user, const struct CnMat *x0, const struct CnMat *error_state,
+										 struct CnMat *x1, struct CnMat * dX_wrt_error_state);
+
+//typedef void (*kalman_error_state_model_fn_t)(void *user, const struct CnMat *x_t, struct CnMat *X_jac_E);
+/***
+ * Given states x0 and x1, generate the error state. Typically this is ~ error_state = x1 - x0. Also optionally generate
+ * the jacobian of the operation; d(error_state) / d(x1)
+ * @param x1
+ * @param x0 Only provided if error_state is required; otherwise both are null
+ * @param Fill in or the parameter state
+ * @param X_jac_e Jacobian of the model state with respect to the error state
+ */
+typedef void (*kalman_error_state_model_fn_t)(void *user, const struct CnMat *x0, const struct CnMat *x1,
+											  struct CnMat *error_state, struct CnMat *E_jac_x1);
 
 typedef struct term_criteria_t {
-	size_t max_iterations;
+	int max_iterations;
 
 	// Absolute step size tolerance
 	FLT minimum_step;
@@ -115,12 +130,14 @@ typedef struct cnkalman_state_s {
 
     enum cnkalman_jacobian_mode transition_jacobian_mode;
 
+	bool error_state_transition;
 	kalman_transition_model_fn_t Transition_fn;
+
 	struct CnMat state_variance_per_second;
 
 	kalman_process_noise_fn_t Q_fn;
 	kalman_normalize_fn_t normalize_fn;
-	kalman_update_model_fn_t Update_fn;
+	kalman_integrate_update_fn_t Update_fn;
 	kalman_error_state_model_fn_t ErrorState_fn;
 	size_t error_state_size;
 

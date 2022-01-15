@@ -20,8 +20,8 @@ static inline void gen_bearings_meas_function_jac_state(CnMat* Hx, const FLT* st
 	const FLT x1 = state0 + (-1 * landmark0);
 	const FLT x2 = 1. / ((x1 * x1) + (x0 * x0));
 	cnSetZero(Hx);
-	cnMatrixSet(Hx, 0, 0, -1 * x0 * x2);
-	cnMatrixSet(Hx, 0, 1, x2 * x1);
+	cnMatrixOptionalSet(Hx, 0, 0, -1 * x0 * x2);
+	cnMatrixOptionalSet(Hx, 0, 1, x2 * x1);
 }
 
 // Full version Jacobian of bearings_meas_function wrt [state0, state1]
@@ -44,8 +44,8 @@ static inline void gen_bearings_meas_function_jac_landmark(CnMat* Hx, const FLT*
 	const FLT x1 = state0 + (-1 * landmark0);
 	const FLT x2 = 1. / ((x1 * x1) + (x0 * x0));
 	cnSetZero(Hx);
-	cnMatrixSet(Hx, 0, 0, x0 * x2);
-	cnMatrixSet(Hx, 0, 1, -1 * x2 * x1);
+	cnMatrixOptionalSet(Hx, 0, 0, x0 * x2);
+	cnMatrixOptionalSet(Hx, 0, 1, -1 * x2 * x1);
 }
 
 // Full version Jacobian of bearings_meas_function wrt [landmark0, landmark1]

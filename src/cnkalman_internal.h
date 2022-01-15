@@ -8,7 +8,7 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
                                   cnkalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
                                   CnMat *H, CnMat *x_k_k, struct cnkalman_update_extended_stats_t *stats);
-
+void cnkalman_update_state(void* user, cnkalman_state_t *k, const CnMat* x0, FLT scale, const CnMat* error_state, CnMat* x1);
 void cnkalman_find_k(cnkalman_state_t *k, cnkalman_gain_matrix *K, const struct CnMat *H,
                                   const CnMat *R);
 
