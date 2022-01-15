@@ -141,9 +141,14 @@ def ccode_wrapper(item, depth = 0):
 def ccode(item):
     return clean_parens(ccode_wrapper(item))
 
+def sanitize_name(n):
+    if len(n) > 1 and n[0] == 'x' and str(n[1:]).isdigit():
+        return "_" + n
+    return n
+
 class WrapTuple:
     def __init__(self, n, t):
-        self.n = n
+        self.n = sanitize_name(n)
         self.t = t
 
     def __getitem__(self, item): return self.t[item]
@@ -172,10 +177,18 @@ class WrapBase:
         return f"offsetof({r._type.__name__}, {self.accessor(r)})/sizeof(FLT)"
     def symengine_type(self):
         return sympy.Symbol(self.accessor())
-    def __add__(self, other): return self.symengine_type() + other
-    def __sub__(self, other): return self.symengine_type() - other
-    def __mul__(self, other): return self.symengine_type() * other
-    def __div__(self, other): return self.symengine_type() / other
+    @staticmethod
+    def as_symengine(x):
+        if hasattr(x, 'symengine_type'):
+            return x.symengine_type()
+        return x
+    def __add__(self, other): return self.symengine_type() + WrapBase.as_symengine(other)
+    def __radd__(self, other): return WrapBase.as_symengine(other) + self.symengine_type()
+    def __sub__(self, other): return self.symengine_type() - WrapBase.as_symengine(other)
+    def __rsub__(self, other): return WrapBase.as_symengine(other) - self.symengine_type()
+    def __mul__(self, other): return self.symengine_type() * WrapBase.as_symengine(other)
+    def __div__(self, other): return self.symengine_type() / WrapBase.as_symengine(other)
+    def __truediv__(self, other): return self.symengine_type() / WrapBase.as_symengine(other)
     def __lt__(self, other):
         if self._parent == other._parent:
             return self.id() < other.id()
@@ -208,20 +221,41 @@ class WrapArray(WrapBase, Iterable):
         WrapBase.__init__(self, parent)
         self._default = None
         self._length = -1
+        self._name = sanitize_name(name)
+        self._array = list()
         if default is not dataclasses.MISSING:
             self._default = default
             self._length = len(default)
-        self._name = name
-        self._set = set()
+            [self[x] for x in range(self._length)]
+
+    def apply_operator(self, op, other):
+        if isinstance(other, Iterable):
+            return np.array([op(x[0], x[1]) for x in zip(self, other)])
+        return np.array([op(x, other) for x in self])
+
+    def __add__(self, other): return self.apply_operator(lambda x, y: x + y, other)
+    def __radd__(self, other): return self.apply_operator(lambda x, y: y + x, other)
+
+    def __sub__(self, other): return self.apply_operator(lambda x, y: x - y, other)
+    def __mul__(self, other): return self.apply_operator(lambda x, y: x * y, other)
+    def __div__(self, other): return self.apply_operator(lambda x, y: x / y, other)
+    def __truediv__(self, other): return self.apply_operator(lambda x, y: x / y, other)
+
+    def ensure_size(self, idx):
+        while len(self._array) <= idx:
+            self._array.append(None)
+
     def __getitem__(self, item):
         name = f"{self.accessor()}[{item}]"
         rtn = sympy.Symbol(name)
-        self._set.add(WrapIndex(self, item))
+        self.ensure_size(item)
+        if self._array[item] == None:
+            self._array[item] = WrapIndex(self, item)
         return rtn
     def id(self): return self._name
 
     def __iter__(self):
-        yield from list(self._set)
+        yield from self._array
     def __len__(self):
         if self._length == -1:
             raise Exception(f"Need length annotation for {self._name}")
@@ -230,7 +264,7 @@ class WrapArray(WrapBase, Iterable):
 class WrapMember(WrapBase):
     def __init__(self, name, type, parent):
         super().__init__(parent)
-        self._name = name
+        self._name = sanitize_name(name)
         self._type = type
     def _sympy_(self):
         return self.symengine_type()
@@ -248,7 +282,7 @@ class WrapMember(WrapBase):
 class WrapObject(WrapBase):
     def __init__(self, name, type, parent):
         super().__init__(parent)
-        self._name = name
+        self._name = sanitize_name(name)
         self._type = type
         for k,f in type.__dataclass_fields__.items():
             setattr(self, k, get_argument(k, None, f.type, parent=self, default=f.default))
@@ -280,7 +314,7 @@ def get_argument(n, argument_specs, annotation, parent=None, default = None):
         if isinstance(a, tuple):
             return WrapTuple(n, a)
         if isinstance(a, int):
-            return WrapTuple(n, [ sympy.symbols(f"{n}{i}") for i in range(a)])
+            return WrapTuple(n, [ sympy.symbols(f"{sanitize_name(n)}{i}") for i in range(a)])
         return a
     if annotation is not None:
         return parse_type(n, annotation, parent, default)
@@ -308,12 +342,12 @@ def flatten_func(func, name=None, args=None, suffix = None, argument_specs ={}):
         name = name + "_" + suffix
 
     if isinstance(func, types.FunctionType):
-        try:
-            func = func(*map_arg(args))
-        except Exception as e:
-            sys.stderr.write(f"Error evaluating {name}. Likely a variable needs a length annotation: {e}\n")
-            traceback.print_exception(*sys.exc_info(), file=sys.stderr)
-            return None, None
+        #try:
+        func = func(*map_arg(args))
+        #except Exception as e:
+        #    sys.stderr.write(f"Error evaluating {name}. Likely a variable needs a length annotation: {e}\n")
+        #    traceback.print_exception(*sys.exc_info(), file=sys.stderr)
+        #    return None, None
 
     if hasattr(func, '__dataclass_fields__'):
         return dataclass2dictionary(func), args
@@ -453,7 +487,7 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
                 return str(current_row)
             if hasattr(item, "tolist"):
                 for item1 in sum(item.tolist(), []):
-                    emit_code("\tcnMatrixSet(%s, %s, %s, %s);" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), output_idx, ccode(item1).replace("\n", " ").replace("\t", " ")))
+                    emit_code("\tcnMatrixOptionalSet(%s, %s, %s, %s);" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), output_idx, ccode(item1).replace("\n", " ").replace("\t", " ")))
                     output_idx += 1
                     current_row = output_idx / current_shape[1]
                     current_col = output_idx % current_shape[1]
@@ -462,7 +496,7 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
                     emit_code("\treturn %s;" % (ccode(item).replace("\n", " ").replace("\t", " ")))
                 else:
                     if item != 0:
-                        emit_code("\tcnMatrixSet(%s, %s, %s, %s);" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), ccode(item).replace("\n", " ").replace("\t", " ")))
+                        emit_code("\tcnMatrixOptionalSet(%s, %s, %s, %s);" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), ccode(item).replace("\n", " ").replace("\t", " ")))
                 output_idx += 1
             if output_idx >= math.prod(current_shape) > 0:
                 outputs_idx += 1
@@ -538,7 +572,7 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         feval = [ a.symengine_type() if hasattr(a, 'symengine_type') else a for a in values ]
 
     for name, jac_value in jac_of.items():
-        fname = func.__name__  + '_jac_' + name
+        fname = func.__name__  + '_jac_' + name.strip('_')
         if type(feval) == list or type(feval) == tuple:
             feval = make_sympy(feval)
         this_jac = jacobian(feval, jac_value)
@@ -631,11 +665,27 @@ def functionify(args_info, jac):
 def expand_hint(v, length):
     return [v[a] for a in range(length)]
 
+def has_free_symbols(x):
+    if isinstance(x, Iterable):
+        return any([has_free_symbols(y) for y in x])
+    if hasattr(x, 'free_symbols'):
+        return len(x.free_symbols) > 0
+    return False
+
 def generate_code(**kwargs):
 
     def f(func):
         f = get_file(inspect.getfile(func))
-        g = lambda *args: np.array(func(*args), dtype=np.float64)
+        def g(*args):
+            grtn = func(*args)
+            if type(grtn) == sp.MutableDenseMatrix:
+                return grtn
+            if has_free_symbols(grtn):
+                return grtn
+            if isinstance(grtn, Iterable):
+                return np.array(grtn, dtype=np.float64)
+            return grtn
+
         jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f)
         for k, v in jacs.items():
             setattr(g, k, functionify(args, v))
