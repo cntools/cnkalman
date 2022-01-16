@@ -43,6 +43,8 @@ def make_sympy(expressions):
 
     if type(expressions) == sp.MutableDenseMatrix:
         return expressions
+    if type(expressions) == sympy.Matrix:
+        return expressions
 
     if hasattr(expressions, "atoms"):
         return [expressions]
@@ -322,6 +324,9 @@ def get_argument(n, argument_specs, annotation, parent=None, default = None):
         return globals()[n]
     return sympy.symbols(n)
 
+def SymbolizeType(type):
+    return parse_type(type.__name__, type, None, None)
+
 def get_name(a):
     if type(a) == list:
         return "_".join(map(get_name, a))
@@ -391,15 +396,20 @@ def arg_str(arg):
 def generate_args_string(args, as_call = False):
     return ", ".join(map(lambda x: get_name(x[1]) if as_call else arg_str, enumerate(args)))
 
-def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = [('out', -1)], preamble = "", file=None, input_keys = None):
+def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = None, preamble = "", file=None, input_keys = None):
     def emit_code(*args, **kwargs):
         if file is not None:
             print(*args, **kwargs, file=file)
 
-
     flatten, args = flatten_func(func, name, args, suffix, argument_specs)
     if flatten is None:
         return None
+
+    if outputs is None:
+        if hasattr(flatten, "shape"):
+            outputs = [("out", flatten.shape)]
+        else:
+            outputs = [("out", -1)]
 
     if callable(func):
         name = func.__name__
@@ -624,9 +634,20 @@ static inline void gen_{fname}_with_hx({", ".join(["CnMat* " + s[0] for s in out
         rtn['jacobian_of_' + name] = this_jac.reshape(*jac_shape)
     return rtn, func_args
 
+def can_generate_jacobian(f):
+    if hasattr(f, 'shape'):
+        return f.shape[0] == 1 or f.shape[1] == 1
+    if isinstance(f, dict):
+        return True
+    if isinstance(f, Iterable):
+        return all(map(can_generate_jacobian, f))
+    return True
+
 def generate_code_and_jacobians(f,transpose=False, jac_over=None, argument_specs = {}, file=None):
-    generate_ccode(f, argument_specs = argument_specs, file=file)
-    return generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_over=jac_over, file=file)
+    f_eval = generate_ccode(f, argument_specs = argument_specs, file=file)
+    if can_generate_jacobian(f_eval):
+        return generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_over=jac_over, file=file)
+    return None, None
 
 from pathlib import Path
 
@@ -687,7 +708,8 @@ def generate_code(**kwargs):
             return grtn
 
         jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f)
-        for k, v in jacs.items():
-            setattr(g, k, functionify(args, v))
+        if jacs is not None:
+            for k, v in jacs.items():
+                setattr(g, k, functionify(args, v))
         return g
     return f

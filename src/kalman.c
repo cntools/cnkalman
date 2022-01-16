@@ -126,7 +126,7 @@ void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, cnkalma
 
 	// k->P = F * k->P * F^T + Q
 	if(k->state_variance_per_second.rows > 0) {
-		cn_add_diag(Pk1_k1, &k->state_variance_per_second, dt * dt);
+		cn_add_diag(Pk1_k1, &k->state_variance_per_second, dt);
 		assert(sane_covariance(Pk1_k1));
 	}
 
