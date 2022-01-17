@@ -163,6 +163,7 @@ typedef struct cnkalman_meas_model {
 
 	const char *name;
 	kalman_measurement_model_fn_t Hfn;
+	bool error_state_model;
 	bool adaptive;
 
 	struct term_criteria_t term_criteria;

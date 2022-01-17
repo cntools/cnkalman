@@ -57,7 +57,7 @@ def make_sympy(expressions):
     if not hasattr(expressions, "_sympy_"):
         if isinstance(expressions, Iterable):
             for col in expressions:
-                if hasattr(col, '_sympy_'):
+                if hasattr(col, '_sympy_') or hasattr(col, 'free_symbols'):
                     flatten.append(col)
                 else:
                     for cell in col:
@@ -148,8 +148,27 @@ def sanitize_name(n):
         return "_" + n
     return n
 
-class WrapTuple:
+class WrapIterable:
+    def __init__(self):
+        pass
+
+    def apply_operator(self, op, other):
+        if isinstance(other, Iterable):
+            return np.array([op(x[0], x[1]) for x in zip(self, other)])
+        return np.array([op(x, other) for x in self])
+
+    def __add__(self, other): return self.apply_operator(lambda x, y: x + y, other)
+    def __radd__(self, other): return self.apply_operator(lambda x, y: y + x, other)
+    def __sub__(self, other): return self.apply_operator(lambda  x, y: x - y, other)
+    def __rsub__(self, other): return self.apply_operator(lambda  x, y: y - x, other)
+    def __sub__(self, other): return self.apply_operator(lambda x, y: x - y, other)
+    def __mul__(self, other): return self.apply_operator(lambda x, y: x * y, other)
+    def __div__(self, other): return self.apply_operator(lambda x, y: x / y, other)
+    def __truediv__(self, other): return self.apply_operator(lambda x, y: x / y, other)
+
+class WrapTuple(WrapIterable):
     def __init__(self, n, t):
+        super().__init__()
         self.n = sanitize_name(n)
         self.t = t
 
@@ -186,8 +205,8 @@ class WrapBase:
         return x
     def __add__(self, other): return self.symengine_type() + WrapBase.as_symengine(other)
     def __radd__(self, other): return WrapBase.as_symengine(other) + self.symengine_type()
-    def __sub__(self, other): return self.symengine_type() - WrapBase.as_symengine(other)
-    def __rsub__(self, other): return WrapBase.as_symengine(other) - self.symengine_type()
+    def __sub__(self, other): return symengine.Add(self.symengine_type(), -WrapBase.as_symengine(other))
+    def __rsub__(self, other): return symengine.Add(WrapBase.as_symengine(other), -self.symengine_type())
     def __mul__(self, other): return self.symengine_type() * WrapBase.as_symengine(other)
     def __div__(self, other): return self.symengine_type() / WrapBase.as_symengine(other)
     def __truediv__(self, other): return self.symengine_type() / WrapBase.as_symengine(other)
@@ -218,8 +237,9 @@ class WrapIndex(WrapBase):
     def __hash__(self):
         return str(self).__hash__()
 
-class WrapArray(WrapBase, Iterable):
+class WrapArray(WrapIterable, WrapBase, Iterable):
     def __init__(self, name, parent, default):
+        WrapIterable.__init__(self)
         WrapBase.__init__(self, parent)
         self._default = None
         self._length = -1
@@ -229,19 +249,6 @@ class WrapArray(WrapBase, Iterable):
             self._default = default
             self._length = len(default)
             [self[x] for x in range(self._length)]
-
-    def apply_operator(self, op, other):
-        if isinstance(other, Iterable):
-            return np.array([op(x[0], x[1]) for x in zip(self, other)])
-        return np.array([op(x, other) for x in self])
-
-    def __add__(self, other): return self.apply_operator(lambda x, y: x + y, other)
-    def __radd__(self, other): return self.apply_operator(lambda x, y: y + x, other)
-
-    def __sub__(self, other): return self.apply_operator(lambda x, y: x - y, other)
-    def __mul__(self, other): return self.apply_operator(lambda x, y: x * y, other)
-    def __div__(self, other): return self.apply_operator(lambda x, y: x / y, other)
-    def __truediv__(self, other): return self.apply_operator(lambda x, y: x / y, other)
 
     def ensure_size(self, idx):
         while len(self._array) <= idx:
@@ -524,7 +531,7 @@ def jacobian(v, of):
     of = [ a.symengine_type() if hasattr(a, 'symengine_type') else a for a in of]
     if hasattr(v, 'jacobian'):
         return v.jacobian(sp.Matrix(of))
-    return sp.Matrix([v]).jacobian(sp.Matrix(of))
+    return sympy.Matrix([v]).jacobian(sp.Matrix(of))
 
 def map_arg(arg):
     if callable(arg):

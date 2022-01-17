@@ -131,7 +131,7 @@ void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, cnkalma
 	}
 
 	struct CnMat* Qp = 0;
-	CN_CREATE_STACK_MAT(Q, dims, dims);
+	CN_CREATE_STACK_MAT(Q, k->error_state_size, k->error_state_size);
 	if(k->Q_fn) {
 		k->Q_fn(k->user, dt, x, &Q);
 		Qp = &Q;
@@ -309,29 +309,28 @@ static bool numeric_jacobian_predict(cnkalman_state_t *k, enum cnkalman_jacobian
 }
 
 typedef struct numeric_jacobian_meas_fn_ctx {
-    kalman_measurement_model_fn_t Hfn;
+	cnkalman_meas_model_t *mk;
     void *user;
-    const struct CnMat *Z;
+    const struct CnMat *Z, *x;
 } numeric_jacobian_meas_fn_ctx;
 
 static bool numeric_jacobian_meas_fn(void * user, const struct CnMat *x, struct CnMat *y) {
     numeric_jacobian_meas_fn_ctx* ctx = user;
-    if(ctx->Hfn(ctx->user, ctx->Z, x, y, 0) == 0)
-        return false;
+	if(ctx->mk->k->ErrorState_fn && ctx->mk->error_state_model) {
+		// x is in error state;
+		CN_CREATE_STACK_VEC(x1, ctx->mk->k->state_cnt);
+		ctx->mk->k->Update_fn(user, ctx->x, x, &x1, 0);
+		if(ctx->mk->Hfn(ctx->user, ctx->Z, &x1, y, 0) == 0)
+			return false;
+	} else {
+		if(ctx->mk->Hfn(ctx->user, ctx->Z, x, y, 0) == 0)
+			return false;
+	}
+
     // Hfn gives jacobian of measurement estimation E, y returns the residual (Z - E). So we invert it and its the form
     // we want going forward
     cnScale(y, y, -1);
     return true;
-}
-
-static bool numeric_jacobian(enum cnkalman_jacobian_mode mode, kalman_measurement_model_fn_t Hfn, void *user, const struct CnMat *Z, const struct CnMat *x, CnMat *H) {
-    numeric_jacobian_meas_fn_ctx ctx = {
-            .Hfn = Hfn,
-            .user = user,
-            .Z = Z
-    };
-    return cnkalman_numerical_differentiate(&ctx,mode == cnkalman_jacobian_mode_debug ?
-    cnkalman_numerical_differentiate_mode_two_sided : mode, numeric_jacobian_meas_fn, x, H);
 }
 
 static inline bool compare_jacobs(const char* label, const CnMat *H, const CnMat *H_calc, const CnMat *y, const CnMat *Z) {
@@ -349,7 +348,7 @@ static inline bool compare_jacobs(const char* label, const CnMat *H, const CnMat
             FLT diff_abs = fabs(deriv_n - deriv_u);
             FLT diff_rel = diff_abs / (deriv_n + deriv_u + 1e-10);
 
-            if (needsPrint == false || (diff_abs > 1e-2 && diff_rel > 1e-2)) {
+            if ((diff_abs > 1e-2 && diff_rel > 1e-2)) {
 				if(needsPrint) {
 					fprintf(stderr, "FJAC DEBUG BEGIN %s %2dx%2d\n", label, H->rows, H->cols);
 					fprintf(stderr, "FJAC COLUMN %d\n", j);
@@ -382,24 +381,49 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 	CN_CREATE_STACK_MAT(HFullState, Z->rows, k->ErrorState_fn ? k->state_cnt : 0);
 
 	if (Hfn) {
-        bool okay = Hfn(user, Z, x, y, k->ErrorState_fn ? &HFullState : H);
+		CnMat * Hfn_arg = (k->ErrorState_fn && !mk->error_state_model) ? &HFullState : H;
+		bool needsJacobian = H && (mk->meas_jacobian_mode == cnkalman_jacobian_mode_user_fn || mk->meas_jacobian_mode == cnkalman_jacobian_mode_debug);
+        bool okay = Hfn(user, Z, x, y, needsJacobian ? Hfn_arg : 0);
 		if (okay == false) {
 			return 0;
 		}
+		if(needsJacobian) {
+			assert(cn_is_finite(Hfn_arg));
+		}
 
 		if (mk->meas_jacobian_mode != cnkalman_jacobian_mode_user_fn && H) {
-			CN_CREATE_STACK_MAT(H_calc, H->rows, H->cols);
+			CN_CREATE_STACK_MAT(H_calc, Hfn_arg->rows, Hfn_arg->cols);
 
-			numeric_jacobian(mk->meas_jacobian_mode, Hfn, user, Z, x, &H_calc);
+			CN_CREATE_STACK_VEC(xe, mk->error_state_model ? k->error_state_size : k->state_cnt);
+
+			if(!k->ErrorState_fn || !mk->error_state_model) {
+				cnCopy(x, &xe, 0);
+			}
+			numeric_jacobian_meas_fn_ctx ctx = {
+				.mk = mk,
+				.user = user,
+				.Z = Z,
+				.x = x
+			};
+			cnkalman_numerical_differentiate(&ctx,
+											 mk->meas_jacobian_mode == cnkalman_jacobian_mode_debug
+												 ? cnkalman_numerical_differentiate_mode_two_sided : mk->meas_jacobian_mode, numeric_jacobian_meas_fn, &xe, &H_calc);
 
 			if(mk->meas_jacobian_mode == cnkalman_jacobian_mode_debug) {
-                if(!compare_jacobs(mk->name, H, &H_calc, y, Z)) {
-					fprintf(stderr, "For state: \n");
+                if(!compare_jacobs(mk->name, Hfn_arg, &H_calc, y, Z)) {
+					fprintf(stderr, "User H: \n");
+					cn_print_mat(Hfn_arg);
+					fprintf(stderr, "Calculated H: \n");
+					cn_print_mat(&H_calc);
+
+					fprintf(stderr, "For state: ");
 					cn_print_mat(x);
+					fprintf(stderr, "For Z:     ");
+					cn_print_mat(Z);
 				}
             }
 
-            cn_matrix_copy(H, &H_calc);
+            cn_matrix_copy(Hfn_arg, &H_calc);
 		}
 		rtn = H;
 	} else {
@@ -407,7 +431,7 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 		cnGEMM(rtn, x, -1, Z, 1, y, 0);
 	}
 
-	if(k->Update_fn && rtn && H) {
+	if(k->Update_fn && rtn && H && !mk->error_state_model) {
 		CN_CREATE_STACK_MAT(Hxsx, k->state_cnt, k->error_state_size);
 		k->Update_fn(user, x, 0, 0, &Hxsx);
 		cnGEMM(Hfn ? &HFullState : rtn, &Hxsx, 1, 0, 0, H, 0);
