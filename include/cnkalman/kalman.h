@@ -160,7 +160,7 @@ typedef struct cnkalman_state_s {
 typedef struct cnkalman_meas_model {
 	cnkalman_state_t *k;
     enum cnkalman_jacobian_mode meas_jacobian_mode;
-
+	size_t numeric_misses, numeric_calcs;
 	const char *name;
 	kalman_measurement_model_fn_t Hfn;
 	bool error_state_model;

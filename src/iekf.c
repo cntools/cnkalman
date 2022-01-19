@@ -130,7 +130,7 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
     // kalman_print_mat_v(k, 100, "iR", &iR, true);
 
     CN_CREATE_STACK_MAT(iP, filter_cnt, filter_cnt);
-    cnInvert(&k->P, &iP, CN_INVERT_METHOD_LU);
+    cnInvert(&k->P, &iP, CN_INVERT_METHOD_SVD);
 	assert(sane_covariance(&k->P));
     // kalman_print_mat_v(k, 100, "iP", &iP, true);
 

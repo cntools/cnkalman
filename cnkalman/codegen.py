@@ -1,19 +1,14 @@
 import dataclasses
-import inspect
+import math
 import sys
-import traceback
 import types
 from collections.abc import Iterable
-from contextlib import redirect_stdout
-from typing import NamedTuple
-import math
 
-import symengine as sp
 import symengine.lib.symengine_wrapper
-from symengine import Pow, cse, Mul
-from sympy import evaluate
-
 import sympy
+
+from symengine import cse
+from symengine import atan2, sqrt, cos, sin, Matrix, Pow, Mul, asin, Symbol, symbols, Abs, tan
 
 def isinstance_namedtuple(obj) -> bool:
     return (
@@ -41,7 +36,7 @@ def flatten_args(bla, prefix=''):
 def make_sympy(expressions):
     flatten = []
 
-    if type(expressions) == sp.MutableDenseMatrix:
+    if type(expressions) == symengine.MutableDenseMatrix:
         return expressions
     if type(expressions) == sympy.Matrix:
         return expressions
@@ -50,7 +45,7 @@ def make_sympy(expressions):
         return [expressions]
 
     if isinstance(expressions, list):
-        return sp.MutableDenseMatrix([make_sympy(a) for a in expressions])
+        return symengine.MutableDenseMatrix([make_sympy(a) for a in expressions])
     if hasattr(expressions, 'symengine_type'):
         return expressions.symengine_type()
 
@@ -90,24 +85,24 @@ def clean_parens(txt):
     return txt
 
 def ccode_wrapper(item, depth = 0):
-    #return sp.ccode(item)
+    #return symengine.ccode(item)
 
     if item.is_Atom:
         if item == True:
             return "true"
         if item == False:
             return "false"
-        return sp.ccode(item)
+        return symengine.ccode(item)
 
     newargs = list(map(lambda x: ccode_wrapper(x, depth+1), item.args))
 
     infixes = {
         Mul: '*',
-        sp.Add: '+',
-        sp.GreaterThan: '>=',
-        sp.StrictGreaterThan: '>',
-        sp.LessThan: '<=',
-        sp.StrictLessThan: '<'
+        symengine.Add: '+',
+        symengine.GreaterThan: '>=',
+        symengine.StrictGreaterThan: '>',
+        symengine.LessThan: '<=',
+        symengine.StrictLessThan: '<'
     }
 
     if item.__class__ == Pow:
@@ -128,15 +123,23 @@ def ccode_wrapper(item, depth = 0):
                     v = "(1. / " + v + ")"
                 return v
         return "pow(%s, %s)" % tuple(newargs)
+    elif item.__class__ is Abs:
+        return f"fabs({newargs[0]})"
     elif item.__class__ in infixes:
         return "(" + (" " + infixes[item.__class__] + " ").join(newargs) + ")"
-    elif item.__class__ == sp.Piecewise:
+    elif item.__class__ == symengine.Piecewise:
         if item.args[1] == True:
             return newargs[0]
         if item.args[1] == False:
             return newargs[2]
         return "(%s ? %s : %s)" % (newargs[1], newargs[0], newargs[2])
+    elif isinstance(item, symengine.Derivative):
+        if item.args[0] == Abs(item.args[1]):
+            return "((%s) > 0 ? 1 : -1) /* Note: Maybe not valid for == 0 */" % (item.args[1])
 
+    known_c_funcs = [ 'asin', 'cos', 'sin', 'atan2', 'tan']
+    if item.__class__.__name__ not in known_c_funcs:
+        print("Warning: Unhandled type " + item.__class__.__name__, file=sys.stderr)
     return item.__class__.__name__ + "(" + ", ".join(map(clean_parens, newargs)) + ")"
     #raise Exception("Unhandled type " + item.__class__.__name__)
 
@@ -195,9 +198,11 @@ class WrapBase:
         r = self.root()
         if self == r:
             return None
-        return f"offsetof({r._type.__name__}, {self.accessor(r)})/sizeof(FLT)"
+        if hasattr(r, '_type'):
+            return f"offsetof({r._type.__name__}, {self.accessor(r)})/sizeof(FLT)"
+        return None
     def symengine_type(self):
-        return sympy.Symbol(self.accessor())
+        return Symbol(self.accessor())
     @staticmethod
     def as_symengine(x):
         if hasattr(x, 'symengine_type'):
@@ -215,7 +220,7 @@ class WrapBase:
             return self.id() < other.id()
         return self._parent < other._parent
 
-def __str__(self):
+    def __str__(self):
         return self._name
 
 class WrapIndex(WrapBase):
@@ -245,18 +250,26 @@ class WrapArray(WrapIterable, WrapBase, Iterable):
         self._length = -1
         self._name = sanitize_name(name)
         self._array = list()
-        if default is not dataclasses.MISSING:
+        if default is not dataclasses.MISSING and default is not None:
             self._default = default
             self._length = len(default)
             [self[x] for x in range(self._length)]
+
+    def accessor(self, stopat = None):
+        if self._parent is None:
+            return f"{self._name}"
+        return WrapBase.accessor(self, stopat)
 
     def ensure_size(self, idx):
         while len(self._array) <= idx:
             self._array.append(None)
 
     def __getitem__(self, item):
+        if isinstance(item, slice):
+            return self._array[item]
+
         name = f"{self.accessor()}[{item}]"
-        rtn = sympy.Symbol(name)
+        rtn = Symbol(name)
         self.ensure_size(item)
         if self._array[item] == None:
             self._array[item] = WrapIndex(self, item)
@@ -323,13 +336,13 @@ def get_argument(n, argument_specs, annotation, parent=None, default = None):
         if isinstance(a, tuple):
             return WrapTuple(n, a)
         if isinstance(a, int):
-            return WrapTuple(n, [ sympy.symbols(f"{sanitize_name(n)}{i}") for i in range(a)])
+            return WrapTuple(n, [ symbols(f"{sanitize_name(n)}{i}") for i in range(a)])
         return a
     if annotation is not None:
         return parse_type(n, annotation, parent, default)
     if n in globals():
         return globals()[n]
-    return sympy.symbols(n)
+    return symbols(n)
 
 def SymbolizeType(type):
     return parse_type(type.__name__, type, None, None)
@@ -341,7 +354,7 @@ def get_name(a):
         return a.__name__
     return str(a)
 
-import inspect, ast
+import inspect
 
 
 def flatten_func(func, name=None, args=None, suffix = None, argument_specs ={}):
@@ -376,6 +389,9 @@ def dataclass2dictionary(func):
             if isinstance(obj, Iterable):
                 for idx, item in enumerate(obj):
                     dict[(root.__class__.__name__, f"{prefix.strip('.')}[{idx}]")] = item
+            elif isinstance(obj, (symengine.MutableDenseMatrix, sympy.MutableDenseMatrix, np.ndarray)):
+                for idx, item in enumerate(list(obj)):
+                    dict[(root.__class__.__name__, f"{prefix.strip('.')}[{idx}]")] = item
             else:
                 dict[(root.__class__.__name__, prefix.strip('.'))] = obj
     process('', func)
@@ -403,7 +419,7 @@ def arg_str(arg):
 def generate_args_string(args, as_call = False):
     return ", ".join(map(lambda x: get_name(x[1]) if as_call else arg_str, enumerate(args)))
 
-def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = None, preamble = "", file=None, input_keys = None):
+def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = None, preamble = "", file=None, input_keys = None, prefix = ""):
     def emit_code(*args, **kwargs):
         if file is not None:
             print(*args, **kwargs, file=file)
@@ -447,16 +463,16 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
         values = [flatten[k] for k in keys]
         keys = [k[1] for k in keys]
         values = [ a.symengine_type() if hasattr(a, 'symengine_type') else a for a in values ]
-        cse_output = cse(sp.Matrix(values))
+        cse_output = cse(symengine.Matrix(values))
         update_free_symbols(values)
     else:
-        cse_output = cse(sp.Matrix(flatten))
+        cse_output = cse(symengine.Matrix(flatten))
         update_free_symbols(flatten)
 
     if singular_return:
-        emit_code("static inline FLT gen_%s(%s) {" % (name, ", ".join(map(arg_str, enumerate(args)))))
+        emit_code("static inline FLT %s%s(%s) {" % (prefix, name, ", ".join(map(arg_str, enumerate(args)))))
     else:
-        emit_code("static inline void gen_%s(%s, %s) {" % (name, ", ".join([type + "* " + s[0] for s in outputs]), ", ".join(map(arg_str, enumerate(args)))))
+        emit_code("static inline void %s%s(%s, %s) {" % (prefix, name, ", ".join([type + "* " + s[0] for s in outputs]), ", ".join(map(arg_str, enumerate(args)))))
 
     if preamble:
         emit_code(preamble.strip("\r\n"))
@@ -476,15 +492,22 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
 
     for item in cse_output[0]:
         stripped_line = ccode(item[1]).replace("\n", " ").replace("\t", " ")
-        emit_code(f"\tconst FLT {sp.ccode(item[0])} = {stripped_line};")
+        emit_code(f"\tconst FLT {symengine.ccode(item[0])} = {stripped_line};")
 
     output_idx = 0
     outputs_idx = 0
 
+    count_zeros = 0
+    for item_idx, item in enumerate(cse_output[1]):
+        if item == 0:
+            count_zeros += 1
+    needs_set_zero = count_zeros > len(cse_output[1]) / 4
+
     if keys is None and not singular_return:
         current_shape = outputs[outputs_idx][1] if isinstance(outputs[outputs_idx][1], tuple) else [outputs[outputs_idx][1], 1]
         var = outputs[outputs_idx][0]
-        emit_code(f"\tcnSetZero({var});")
+        if needs_set_zero:
+            emit_code(f"\tcnSetZero({var});")
     for item_idx, item in enumerate(cse_output[1]):
         if keys is None:
             current_shape = outputs[outputs_idx][1] if isinstance(outputs[outputs_idx][1], tuple) else [outputs[outputs_idx][1], 1]
@@ -512,7 +535,7 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
                 if singular_return:
                     emit_code("\treturn %s;" % (ccode(item).replace("\n", " ").replace("\t", " ")))
                 else:
-                    if item != 0:
+                    if item != 0 or not needs_set_zero:
                         emit_code("\tcnMatrixOptionalSet(%s, %s, %s, %s);" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), ccode(item).replace("\n", " ").replace("\t", " ")))
                 output_idx += 1
             if output_idx >= math.prod(current_shape) > 0:
@@ -530,8 +553,10 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
 def jacobian(v, of):
     of = [ a.symengine_type() if hasattr(a, 'symengine_type') else a for a in of]
     if hasattr(v, 'jacobian'):
-        return v.jacobian(sp.Matrix(of))
-    return sympy.Matrix([v]).jacobian(sp.Matrix(of))
+        return v.jacobian(symengine.Matrix(of))
+    if isinstance(v, np.ndarray):
+        v = list(v)
+    return Matrix([v]).jacobian(symengine.Matrix(of))
 
 def map_arg(arg):
     if callable(arg):
@@ -556,7 +581,7 @@ def flat_values(a):
     return [a]
 
 
-def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over=None, argument_specs={}, file=None):
+def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over=None, argument_specs={}, file=None, prefix=""):
     def emit_code(*args, **kwargs):
         if file is not None:
             print(*args, **kwargs, file=file)
@@ -599,8 +624,11 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         jac_shape = this_jac.shape
         jac_size = this_jac.shape[0] * this_jac.shape[1]
 
+        if jac_size == 1:
+            continue
+
         emit_code("// Jacobian of", func.__name__, "wrt", jac_value)
-        generate_ccode(this_jac, fname, func_args, suffix=suffix, outputs=[('Hx', jac_shape, jac_value)], input_keys=keys,file=file)
+        generate_ccode(this_jac, fname, func_args, suffix=suffix, outputs=[('Hx', jac_shape, jac_value)], input_keys=keys,file=file, prefix=prefix)
 
         #jac_with_hx = this_jac.reshape(jac_size, 1).col_join(fxm.reshape(fx_size, 1))
 
@@ -613,9 +641,9 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         if keys is not None:
             continue
 
-        gen_call = f"gen_{func.__name__}{fn_suffix}(hx, {generate_args_string(func_args, True)});"
+        gen_call = f"{prefix}{func.__name__}{fn_suffix}(hx, {generate_args_string(func_args, True)});"
         if len(fx) == 1:
-            gen_call = f"hx->data[0] = gen_{func.__name__}{fn_suffix}({generate_args_string(func_args, True)});"
+            gen_call = f"hx->data[0] = {prefix}{func.__name__}{fn_suffix}({generate_args_string(func_args, True)});"
 
     #     preamble = f"""
     # if(Hx == 0) {{
@@ -629,12 +657,12 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
     #     generate_ccode(jac_with_hx, fname + "_with_hx", func_args, suffix=suffix, outputs=[('Hx', jac_shape, jac_value), ('hx', this_jac.shape[0] - jac_size)], preamble=preamble, file)
         outputs = [('Hx', jac_shape, jac_value), ('hx', this_jac.shape[0] - jac_size)]
         emit_code(f"""
-static inline void gen_{fname}_with_hx({", ".join(["CnMat* " + s[0] for s in outputs])}, {", ".join(map(arg_str, enumerate(func_args)))}) {{
+static inline void {prefix}{fname}_with_hx({", ".join(["CnMat* " + s[0] for s in outputs])}, {", ".join(map(arg_str, enumerate(func_args)))}) {{
     if(hx != 0) {{ 
         {gen_call}
     }}
     if(Hx != 0) {{ 
-        gen_{fname}{fn_suffix}(Hx, {generate_args_string(func_args, True)});
+        {prefix}{fname}{fn_suffix}(Hx, {generate_args_string(func_args, True)});
     }}
 }}""")
 
@@ -650,10 +678,10 @@ def can_generate_jacobian(f):
         return all(map(can_generate_jacobian, f))
     return True
 
-def generate_code_and_jacobians(f,transpose=False, jac_over=None, argument_specs = {}, file=None):
-    f_eval = generate_ccode(f, argument_specs = argument_specs, file=file)
+def generate_code_and_jacobians(f,transpose=False, jac_over=None, argument_specs = {}, file=None, prefix=""):
+    f_eval = generate_ccode(f, argument_specs = argument_specs, file=file, prefix=prefix)
     if can_generate_jacobian(f_eval):
-        return generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_over=jac_over, file=file)
+        return generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_over=jac_over, file=file, prefix=prefix)
     return None, None
 
 from pathlib import Path
@@ -661,6 +689,8 @@ from pathlib import Path
 generate_code_files = {}
 def get_file(fn):
     if not '--cnkalman-generate-source' in sys.argv:
+        return None
+    if fn != sys.argv[0]:
         return None
     if fn in generate_code_files:
         return generate_code_files[fn]
@@ -700,13 +730,13 @@ def has_free_symbols(x):
         return len(x.free_symbols) > 0
     return False
 
-def generate_code(**kwargs):
+def generate_code(prefix="", **kwargs):
 
     def f(func):
         f = get_file(inspect.getfile(func))
         def g(*args):
             grtn = func(*args)
-            if type(grtn) == sp.MutableDenseMatrix:
+            if type(grtn) == symengine.MutableDenseMatrix:
                 return grtn
             if has_free_symbols(grtn):
                 return grtn
@@ -714,7 +744,7 @@ def generate_code(**kwargs):
                 return np.array(grtn, dtype=np.float64)
             return grtn
 
-        jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f)
+        jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f, prefix=prefix)
         if jacs is not None:
             for k, v in jacs.items():
                 setattr(g, k, functionify(args, v))

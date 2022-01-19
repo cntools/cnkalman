@@ -13,7 +13,7 @@ bool cnkalman_numerical_differentiate(void * user, enum cnkalman_numerical_diffe
 
     FLT* xa = cn_as_vector(&x);
     for(int i = 0;i < cx->rows;i++) {
-        FLT s = xa[i] == 0 ? 1e-7 : fmax(1e-10, fabs(xa[i] * 1e-8));
+        FLT s = xa[i] == 0 ? 1e-7 : fmax(1e-9, fabs(xa[i] * 1e-8));
 
         if(mode == cnkalman_numerical_differentiate_mode_two_sided) {
             xa[i] += s;

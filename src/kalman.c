@@ -410,7 +410,9 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 												 ? cnkalman_numerical_differentiate_mode_two_sided : mk->meas_jacobian_mode, numeric_jacobian_meas_fn, &xe, &H_calc);
 
 			if(mk->meas_jacobian_mode == cnkalman_jacobian_mode_debug) {
+				mk->numeric_calcs++;
                 if(!compare_jacobs(mk->name, Hfn_arg, &H_calc, y, Z)) {
+					mk->numeric_misses++;
 					fprintf(stderr, "User H: \n");
 					cn_print_mat(Hfn_arg);
 					fprintf(stderr, "Calculated H: \n");
@@ -419,6 +421,7 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 					fprintf(stderr, "For state: ");
 					cn_print_mat(x);
 					fprintf(stderr, "For Z:     ");
+					fprintf(stderr, "Numeric %f%% miss rate", 100. * (FLT)mk->numeric_misses / (FLT)mk->numeric_calcs++);
 					cn_print_mat(Z);
 				}
             }
