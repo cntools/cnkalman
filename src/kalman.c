@@ -405,9 +405,10 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 				.Z = Z,
 				.x = x
 			};
-			cnkalman_numerical_differentiate(&ctx,
+			cnkalman_numerical_differentiate_step_size(&ctx,
 											 mk->meas_jacobian_mode == cnkalman_jacobian_mode_debug
-												 ? cnkalman_numerical_differentiate_mode_two_sided : mk->meas_jacobian_mode, numeric_jacobian_meas_fn, &xe, &H_calc);
+												 ? cnkalman_numerical_differentiate_mode_two_sided : mk->meas_jacobian_mode,
+													   mk->numeric_step_size, numeric_jacobian_meas_fn, &xe, &H_calc);
 
 			if(mk->meas_jacobian_mode == cnkalman_jacobian_mode_debug) {
 				mk->numeric_calcs++;
