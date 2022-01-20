@@ -154,7 +154,7 @@ typedef struct cnkalman_state_s {
 
 	int log_level;
 	void *datalog_user;
-	void (*datalog)(struct cnkalman_state_s *state, const char *name, const FLT *v, size_t length);
+	void (*datalog)(const struct cnkalman_state_s *state, const char *name, const FLT *v, size_t length);
 } cnkalman_state_t;
 
 typedef struct cnkalman_meas_model {
@@ -185,8 +185,7 @@ CN_EXPORT_FUNCTION FLT cnkalman_meas_model_predict_update(FLT t, cnkalman_meas_m
  * @param index Which state vector to pull out
  * @param out Pre allocated output buffer.
  */
-CN_EXPORT_FUNCTION void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t *k, size_t start_index,
-                                                         size_t end_index, FLT *out);
+CN_EXPORT_FUNCTION void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t *k, CnMat*x1, CnMat* P);
 
 CN_EXPORT_FUNCTION void cnkalman_predict_state(FLT t, cnkalman_state_t *k);
 

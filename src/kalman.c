@@ -2,12 +2,12 @@
 #if !defined(__FreeBSD__) && !defined(__APPLE__)
 #include <malloc.h>
 #endif
-#include <memory.h>
+#include <cnkalman/kalman.h>
 #include <cnkalman/numerical_diff.h>
 #include <cnmatrix/cn_matrix.h>
-#include <stdio.h>
-#include <cnkalman/kalman.h>
 
+#include <memory.h>
+#include <stdio.h>
 
 #include "cnkalman_internal.h"
 
@@ -51,7 +51,7 @@ void kalman_print_mat_v(const cnkalman_state_t *k, int ll, const char *name, con
 	}
 	fprintf(stdout, "\n");
 }
-static void kalman_print_mat(cnkalman_state_t *k, const char *name, const CnMat *M, bool newlines) {
+static void kalman_print_mat(const cnkalman_state_t *k, const char *name, const CnMat *M, bool newlines) {
 	kalman_print_mat_v(k, KALMAN_LOG_LEVEL, name, M, newlines);
 }
 
@@ -81,7 +81,7 @@ CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char
 
 void cnkalman_error_state_init(cnkalman_state_t *k, size_t state_cnt, size_t error_state_cnt,
 							   kalman_transition_model_fn_t F, kalman_process_noise_fn_t q_fn,
-							   kalman_error_state_model_fn_t Err_F, void *user, double *state) {
+							   kalman_error_state_model_fn_t Err_F, void *user, FLT *state) {
 	memset(k, 0, sizeof(*k));
 
 	k->state_cnt = (int)state_cnt;
@@ -118,7 +118,7 @@ void cnkalman_state_free(cnkalman_state_t *k) {
 	k->state.data = 0;
 }
 
-void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, cnkalman_state_t *k) {
+void cnkalman_predict_covariance1(FLT dt, cnkalman_state_t *k, const CnMat *F, const CnMat *x,  CnMat *Pk1_k11) {
 	int dims = k->state_cnt;
 
 	CnMat *Pk1_k1 = &k->P;
@@ -150,10 +150,63 @@ void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, cnkalma
 	}
 	CN_FREE_STACK_MAT(Q);
 }
+
+static inline void cnkalman_predict_covariance(FLT dt, const CnMat *F, const CnMat *x, const cnkalman_state_t *k, CnMat *P) {
+
+
+	CnMat Pk1_k1;
+	if(P->rows == P->cols && P->cols == k->P.cols) {
+		Pk1_k1 = *P;
+	} else {
+		FLT *Pk1_k1_data = (FLT*)alloca((k->P.rows) * (k->P.cols) * sizeof(FLT));
+		Pk1_k1 = cnMat(k->P.rows, k->P.cols, Pk1_k1_data);
+	}
+
+	if(Pk1_k1.data != k->P.data) {
+		cnCopy(&k->P, &Pk1_k1, 0);
+	}
+
+	kalman_print_mat(k, "Pk-1_k-1", &Pk1_k1, 1);
+
+	if(dt != 0) {
+		// k->P = F * k->P * F^T + Q
+		if (k->state_variance_per_second.rows > 0) {
+			cn_add_diag(&Pk1_k1, &k->state_variance_per_second, fabs(dt));
+			assert(sane_covariance(&Pk1_k1));
+		}
+
+		struct CnMat *Qp = 0;
+		CN_CREATE_STACK_MAT(Q, k->error_state_size, k->error_state_size);
+		if (k->Q_fn) {
+			k->Q_fn(k->user, fabs(dt), x, &Q);
+			Qp = &Q;
+			assert(sane_covariance(&Q));
+		}
+		cn_ABAt_add(&Pk1_k1, F, &Pk1_k1, Qp);
+		assert(sane_covariance(&Pk1_k1));
+
+		// printf("!!!! %f\n", cnDet(Pk1_k1));
+		// assert(cnDet(Pk1_k1) >= 0);
+		if (k->log_level >= KALMAN_LOG_LEVEL) {
+			CN_KALMAN_VERBOSE(110, "T: %f", dt);
+			kalman_print_mat(k, "Q", Qp, 1);
+			kalman_print_mat(k, "F", F, 1);
+			kalman_print_mat(k, "Pk1_k-1", &Pk1_k1, 1);
+		}
+		CN_FREE_STACK_MAT(Q);
+	}
+
+	if(Pk1_k1.data != P->data) {
+		if(P->cols == 1) {
+			cn_get_diag(&Pk1_k1, cn_as_vector(P), P->rows);
+		} else {
+			CnMat Pk1_k1View = cnMatView(P->rows, P->cols, &Pk1_k1, 0, 0);
+			cnCopy(&Pk1_k1View, P, 0);
+		}
+	}
+}
 void cnkalman_find_k(cnkalman_state_t *k, cnkalman_gain_matrix *K, const struct CnMat *H,
 								  const CnMat *R) {
-	int dims = k->state_cnt;
-
 	const CnMat *Pk_k = &k->P;
 
 	CN_CREATE_STACK_MAT(Pk_k1Ht, Pk_k->rows, H->rows);
@@ -265,7 +318,7 @@ static void cnkalman_update_covariance(cnkalman_state_t *k, const cnkalman_gain_
 	CN_FREE_STACK_MAT(eye);
 }
 
-static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t0_t0, CnMat *x_t0_t1, CnMat* F) {
+static inline void cnkalman_predict(FLT t, const cnkalman_state_t *k, const CnMat *x_t0_t0, CnMat *x_t0_t1, CnMat* F) {
 	// X_k|k-1 = Predict(X_K-1|k-1)
 	if (k->log_level > KALMAN_LOG_LEVEL) {
 		fprintf(stdout, "INFO kalman_predict from ");
@@ -275,7 +328,7 @@ static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t
 	if (t == k->t) {
 		cnCopy(x_t0_t0, x_t0_t1, 0);
 	} else {
-		assert(t > k->t);
+		//assert(t > k->t);
 		k->Transition_fn(t - k->t, k, x_t0_t0, x_t0_t1, F);
 	}
 	if (k->log_level > KALMAN_LOG_LEVEL) {
@@ -291,7 +344,7 @@ static inline void cnkalman_predict(FLT t, cnkalman_state_t *k, const CnMat *x_t
 
 typedef struct numeric_jacobian_predict_fn_ctx {
     FLT dt;
-    cnkalman_state_t *k;
+    const cnkalman_state_t *k;
 } numeric_jacobian_predict_fn_ctx;
 static bool numeric_jacobian_predict_fn(void * user, const struct CnMat *x, struct CnMat *y) {
     numeric_jacobian_predict_fn_ctx* ctx = user;
@@ -299,7 +352,7 @@ static bool numeric_jacobian_predict_fn(void * user, const struct CnMat *x, stru
     return true;
 }
 
-static bool numeric_jacobian_predict(cnkalman_state_t *k, enum cnkalman_jacobian_mode mode, FLT dt, const struct CnMat *x, CnMat *H) {
+static bool numeric_jacobian_predict(const cnkalman_state_t *k, enum cnkalman_jacobian_mode mode, FLT dt, const struct CnMat *x, CnMat *H) {
     numeric_jacobian_predict_fn_ctx ctx = {
             .dt = dt,
             .k = k
@@ -448,34 +501,41 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 	return rtn;
 }
 
-void cnkalman_predict_state(FLT t, cnkalman_state_t *k) {
-    FLT dt = t - k->t;
-    assert(dt >= 0);
+CN_EXPORT_FUNCTION void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t *k, CnMat*x1, CnMat* P) {
+	FLT dt = t - k->t;
+	if(t == 0 || fabs(dt) < 1e-4){
+		dt = 0;
+	}
 
-    int state_cnt = k->state_cnt;
-	int filter_cnt = k->error_state_size;
-    CnMat *x_k_k = &k->state;
+	int state_cnt = k->state_cnt;
 
-    CN_CREATE_STACK_MAT(x_k1_k1, state_cnt, 1);
-    cn_matrix_copy(&x_k1_k1, x_k_k);
+	size_t f_size = k->error_state_transition ? k->error_state_size : state_cnt;
+	CN_CREATE_STACK_MAT(F, f_size, f_size);
+	CN_CREATE_STACK_MAT(FHxsx, k->error_state_size, k->error_state_size);
+	cn_set_constant(&F, NAN);
+	CnMat* FP = &F;
 
+	CnMat x_k_k;
+	if(x1->rows == k->state.rows) {
+		x_k_k = *x1;
+	} else {
+		FLT *x_k_k_data = (FLT*)alloca((state_cnt) * sizeof(FLT));
+		x_k_k = cnVec(k->state_cnt, x_k_k_data);
+	}
 
-    if (dt > 0) {
-		size_t f_size = k->error_state_transition ? k->error_state_size : state_cnt;
-        CN_CREATE_STACK_MAT(F, f_size, f_size);
-		CN_CREATE_STACK_MAT(FHxsx, k->error_state_size, k->error_state_size);
-		cn_set_constant(&F, NAN);
+	if (dt != 0) {
+		CN_CREATE_STACK_MAT(x_k1_k1, state_cnt, 1);
+		cn_matrix_copy(&x_k1_k1, &k->state);
 
-        cnkalman_predict(t, k, &x_k1_k1, x_k_k, &F);
+		cnkalman_predict(t, k, &x_k1_k1, &x_k_k, &F);
 
 		assert(cn_is_finite(&F));
 
-		CnMat* FP = &F;
 		if(k->Update_fn && k->error_state_transition == false) {
 			CN_CREATE_STACK_MAT(OldXOlde, state_cnt, k->error_state_size);
 			k->Update_fn(k->user, &x_k1_k1, 0, 0, &OldXOlde);
 			CN_CREATE_STACK_MAT(NewENewX, k->error_state_size, state_cnt);
-			k->ErrorState_fn(k->user, x_k_k, 0, 0, &NewENewX);
+			k->ErrorState_fn(k->user, &x_k_k, 0, 0, &NewENewX);
 
 			CN_CREATE_STACK_MAT(FOldXOldE, F.rows, OldXOlde.cols);
 			cnGEMM(&F, &OldXOlde, 1, 0, 0, &FOldXOldE, 0);
@@ -484,22 +544,33 @@ void cnkalman_predict_state(FLT t, cnkalman_state_t *k) {
 		}
 
 		if(k->transition_jacobian_mode != cnkalman_jacobian_mode_user_fn) {
-            CN_CREATE_STACK_MAT(F_calc, F.rows, F.cols);
+			CN_CREATE_STACK_MAT(F_calc, F.rows, F.cols);
 
-            numeric_jacobian_predict(k, k->transition_jacobian_mode, dt, &x_k1_k1, &F_calc);
+			numeric_jacobian_predict(k, k->transition_jacobian_mode, dt, &x_k1_k1, &F_calc);
 
-            if(k->transition_jacobian_mode == cnkalman_jacobian_mode_debug) {
-                compare_jacobs("predict", &F, &F_calc, &x_k1_k1, x_k_k);
-            }
+			if(k->transition_jacobian_mode == cnkalman_jacobian_mode_debug) {
+				compare_jacobs("predict", &F, &F_calc, &x_k1_k1, &x_k_k);
+			}
 
-            cn_matrix_copy(&F, &F_calc);
-        }
+			cn_matrix_copy(&F, &F_calc);
+		}
+	} else {
+		cn_matrix_copy(&x_k_k, &k->state);
+	}
 
-        // Run predict
-		cnkalman_predict_covariance(dt, FP, x_k_k, k);
-        CN_FREE_STACK_MAT(F);
-    }
+	if(P) {
+		cnkalman_predict_covariance(dt, FP, &x_k_k, k, P);
+	}
 
+	if(x_k_k.data != x1->data) {
+		memcpy(cn_as_vector(x1), cn_as_const_vector(&x_k_k), sizeof(FLT) * x1->rows);
+	}
+
+	CN_FREE_STACK_MAT(F);
+}
+
+void cnkalman_predict_state(FLT t, cnkalman_state_t *k) {
+	cnkalman_extrapolate_state(t, k, &k->state, &k->P);
     k->t = t;
 }
 
@@ -661,19 +732,4 @@ FLT cnkalman_predict_update_state(FLT t, cnkalman_state_t *k, const struct CnMat
 	return cnkalman_meas_model_predict_update(t, &mk, (void *)H, Z, R);
 }
 
-void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t *k, size_t start_index, size_t end_index,
-                                      FLT *out) {
-	CN_CREATE_STACK_MAT(tmpOut, k->state_cnt, 1);
-	const CnMat *x = &k->state;
-
-	FLT dt = t == 0. ? 0 : t - k->t;
-	const FLT *copyFrom = cn_as_const_vector(&k->state);
-	if (dt > 0) {
-		k->Transition_fn(dt, k, x, &tmpOut, 0);
-		copyFrom = _tmpOut;
-	}
-	assert(out != copyFrom);
-	memcpy(out, copyFrom + start_index, (end_index - start_index) * sizeof(FLT));
-	CN_FREE_STACK_MAT(tmpOut);
-}
 void cnkalman_set_P(cnkalman_state_t *k, const FLT *p) { cn_set_diag(&k->P, p); }

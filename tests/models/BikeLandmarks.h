@@ -33,7 +33,7 @@ struct LandmarkMeasurement : public cnkalman::KalmanMeasurementModel {
 
     bool predict_measurement(const CnMat &x_t, CnMat *pz, CnMat *h) override {
         FLT landmark[] = { px, py };
-        gen_meas_function_jac_state_with_hx(h, pz, x_t.data, landmark);
+        meas_function_jac_state_with_hx(h, pz, x_t.data, landmark);
 
         return h == nullptr || cn_is_finite(h);
     }
@@ -58,7 +58,7 @@ struct BikeLandmarks : public cnkalman::KalmanModel {
             U[1] = 1e-7;
         }
         CN_CREATE_STACK_MAT(V, 3, 2);
-        gen_predict_function_jac_u(&V, dt, wheelbase, state, U);
+        predict_function_jac_u(&V, dt, wheelbase, state, U);
 
         FLT _M[] = {
                 v_std*v_std, 0,
@@ -74,7 +74,7 @@ struct BikeLandmarks : public cnkalman::KalmanModel {
             U[1] = 1e-7;
         }
 
-        gen_predict_function_jac_state_with_hx(F, x1, dt, wheelbase, x0.data, U);
+        predict_function_jac_state_with_hx(F, x1, dt, wheelbase, x0.data, U);
     }
 
 };

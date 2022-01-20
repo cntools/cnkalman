@@ -2,17 +2,16 @@
 #pragma once
 #include <cnkalman/generated_header.h>
 // clang-format off    
-static inline void gen_predict_meas(CnMat* out, const FLT* x) {
+static inline void predict_meas(CnMat* out, const FLT* x) {
 	const FLT x0 = x[0];
 	const FLT x1 = x[1];
-	cnSetZero(out);
 	cnMatrixOptionalSet(out, 0, 0, sin((5 * (x1 * x1)) + (5 * (x0 * x0))));
 	cnMatrixOptionalSet(out, 1, 0, sin(101 * x0) * sin(101 * x1));
 	cnMatrixOptionalSet(out, 2, 0, cos(11 * x1) * sin(11 * x0));
 }
 
 // Jacobian of predict_meas wrt [x0, x1, x2, x3]
-static inline void gen_predict_meas_jac_x(CnMat* Hx, const FLT* x) {
+static inline void predict_meas_jac_x(CnMat* Hx, const FLT* x) {
 	const FLT x0 = x[0];
 	const FLT x1 = x[1];
 	const FLT x2 = 10 * cos((5 * (x1 * x1)) + (5 * (x0 * x0)));
@@ -31,11 +30,11 @@ static inline void gen_predict_meas_jac_x(CnMat* Hx, const FLT* x) {
 
 // Full version Jacobian of predict_meas wrt [x0, x1, x2, x3]
 
-static inline void gen_predict_meas_jac_x_with_hx(CnMat* Hx, CnMat* hx, const FLT* x) {
+static inline void predict_meas_jac_x_with_hx(CnMat* Hx, CnMat* hx, const FLT* x) {
     if(hx != 0) { 
-        gen_predict_meas(hx, x);
+        predict_meas(hx, x);
     }
     if(Hx != 0) { 
-        gen_predict_meas_jac_x(Hx, x);
+        predict_meas_jac_x(Hx, x);
     }
 }

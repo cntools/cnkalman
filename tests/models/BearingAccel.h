@@ -29,7 +29,7 @@ struct BearingAccel : public cnkalman::KalmanModel {
 
         bool predict_measurement(const CnMat &x, CnMat *z, CnMat *h) override {
             auto* mdl = reinterpret_cast<BearingAccelModel *>(x.data);
-            gen_BearingAccelModel_imu_predict_jac_model_with_hx(h, z, mdl);
+            BearingAccelModel_imu_predict_jac_model_with_hx(h, z, mdl);
             return h == nullptr || cn_is_finite(h);
         }
 
@@ -58,10 +58,10 @@ struct BearingAccel : public cnkalman::KalmanModel {
 
 		bool predict_measurement(const CnMat &x_t, CnMat *pz, CnMat *h) override {
             if(pz) {
-                pz->data[0] = gen_BearingAccelModel_tdoa_predict(&a, &b, (BearingAccelModel *) x_t.data);
+                pz->data[0] = BearingAccelModel_tdoa_predict(&a, &b, (BearingAccelModel *) x_t.data);
             }
             if(h) {
-                gen_BearingAccelModel_tdoa_predict_jac_model(h, &a, &b, (BearingAccelModel *) x_t.data);
+                BearingAccelModel_tdoa_predict_jac_model(h, &a, &b, (BearingAccelModel *) x_t.data);
             }
 			return h == nullptr || cn_is_finite(h);
 		}
@@ -113,10 +113,10 @@ struct BearingAccel : public cnkalman::KalmanModel {
 
 	void predict(FLT dt, const struct CnMat &x0, struct CnMat *x1, CnMat* F) override {
 	    if(F) {
-            gen_BearingAccelModel_predict_jac_model(F, dt, reinterpret_cast<const BearingAccelModel *>(x0.data));
+            BearingAccelModel_predict_jac_model(F, dt, reinterpret_cast<const BearingAccelModel *>(x0.data));
 	    }
         if(x1) {
-            gen_BearingAccelModel_predict(reinterpret_cast<BearingAccelModel *>(x1->data), dt,
+            BearingAccelModel_predict(reinterpret_cast<BearingAccelModel *>(x1->data), dt,
                                           reinterpret_cast<const BearingAccelModel *>(x0.data));
 	    }
 	}

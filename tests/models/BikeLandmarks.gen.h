@@ -2,29 +2,27 @@
 #pragma once
 #include <cnkalman/generated_header.h>
 // clang-format off    
-static inline void gen_predict_function(CnMat* out, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function(CnMat* out, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
 	const FLT x0 = tan(u1);
-	const FLT x1 = (1. / x0) * wheelbase;
-	const FLT x2 = state2 + (u0 * x0 * dt * (1. / wheelbase));
-	cnSetZero(out);
-	cnMatrixOptionalSet(out, 0, 0, (x1 * sin(x2)) + state0 + (-1 * x1 * sin(state2)));
-	cnMatrixOptionalSet(out, 1, 0, (x1 * cos(state2)) + state1 + (-1 * x1 * cos(x2)));
-	cnMatrixOptionalSet(out, 2, 0, x2);
+	const FLT x1 = state2 + (u0 * x0 * dt * (1. / wheelbase));
+	const FLT x2 = (1. / x0) * wheelbase;
+	cnMatrixOptionalSet(out, 0, 0, (-1 * x2 * sin(state2)) + state0 + (x2 * sin(x1)));
+	cnMatrixOptionalSet(out, 1, 0, (x2 * cos(state2)) + state1 + (-1 * x2 * cos(x1)));
+	cnMatrixOptionalSet(out, 2, 0, x1);
 }
 
 // Jacobian of predict_function wrt [dt]
-static inline void gen_predict_function_jac_dt(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_dt(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
 	const FLT x0 = u0 * tan(u1) * (1. / wheelbase);
 	const FLT x1 = state2 + (x0 * dt);
-	cnSetZero(Hx);
 	cnMatrixOptionalSet(Hx, 0, 0, u0 * cos(x1));
 	cnMatrixOptionalSet(Hx, 1, 0, u0 * sin(x1));
 	cnMatrixOptionalSet(Hx, 2, 0, x0);
@@ -32,16 +30,16 @@ static inline void gen_predict_function_jac_dt(CnMat* Hx, const FLT dt, const FL
 
 // Full version Jacobian of predict_function wrt [dt]
 
-static inline void gen_predict_function_jac_dt_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_dt_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
     if(hx != 0) { 
-        gen_predict_function(hx, dt, wheelbase, state, u);
+        predict_function(hx, dt, wheelbase, state, u);
     }
     if(Hx != 0) { 
-        gen_predict_function_jac_dt(Hx, dt, wheelbase, state, u);
+        predict_function_jac_dt(Hx, dt, wheelbase, state, u);
     }
 }
 // Jacobian of predict_function wrt [wheelbase]
-static inline void gen_predict_function_jac_wheelbase(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_wheelbase(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
@@ -50,52 +48,51 @@ static inline void gen_predict_function_jac_wheelbase(CnMat* Hx, const FLT dt, c
 	const FLT x2 = u0 * dt;
 	const FLT x3 = x2 * (1. / wheelbase);
 	const FLT x4 = state2 + (x0 * x3);
-	const FLT x5 = sin(x4);
-	const FLT x6 = cos(x4);
-	cnSetZero(Hx);
-	cnMatrixOptionalSet(Hx, 0, 0, (-1 * x3 * x6) + (x1 * x5) + (-1 * x1 * sin(state2)));
-	cnMatrixOptionalSet(Hx, 1, 0, (-1 * x1 * x6) + (x1 * cos(state2)) + (-1 * x3 * x5));
+	const FLT x5 = cos(x4);
+	const FLT x6 = sin(x4);
+	cnMatrixOptionalSet(Hx, 0, 0, (x1 * x6) + (-1 * x1 * sin(state2)) + (-1 * x3 * x5));
+	cnMatrixOptionalSet(Hx, 1, 0, (-1 * x1 * x5) + (x1 * cos(state2)) + (-1 * x3 * x6));
 	cnMatrixOptionalSet(Hx, 2, 0, -1 * x0 * x2 * (1. / (wheelbase * wheelbase)));
 }
 
 // Full version Jacobian of predict_function wrt [wheelbase]
 
-static inline void gen_predict_function_jac_wheelbase_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_wheelbase_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
     if(hx != 0) { 
-        gen_predict_function(hx, dt, wheelbase, state, u);
+        predict_function(hx, dt, wheelbase, state, u);
     }
     if(Hx != 0) { 
-        gen_predict_function_jac_wheelbase(Hx, dt, wheelbase, state, u);
+        predict_function_jac_wheelbase(Hx, dt, wheelbase, state, u);
     }
 }
 // Jacobian of predict_function wrt [state0, state1, state2]
-static inline void gen_predict_function_jac_state(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_state(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
 	const FLT x0 = tan(u1);
-	const FLT x1 = state2 + (u0 * x0 * dt * (1. / wheelbase));
-	const FLT x2 = (1. / x0) * wheelbase;
+	const FLT x1 = (1. / x0) * wheelbase;
+	const FLT x2 = state2 + (u0 * x0 * dt * (1. / wheelbase));
 	cnSetZero(Hx);
 	cnMatrixOptionalSet(Hx, 0, 0, 1);
-	cnMatrixOptionalSet(Hx, 0, 2, (-1 * x2 * cos(state2)) + (x2 * cos(x1)));
+	cnMatrixOptionalSet(Hx, 0, 2, (x1 * cos(x2)) + (-1 * x1 * cos(state2)));
 	cnMatrixOptionalSet(Hx, 1, 1, 1);
-	cnMatrixOptionalSet(Hx, 1, 2, (x2 * sin(x1)) + (-1 * x2 * sin(state2)));
+	cnMatrixOptionalSet(Hx, 1, 2, (x1 * sin(x2)) + (-1 * x1 * sin(state2)));
 	cnMatrixOptionalSet(Hx, 2, 2, 1);
 }
 
 // Full version Jacobian of predict_function wrt [state0, state1, state2]
 
-static inline void gen_predict_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
     if(hx != 0) { 
-        gen_predict_function(hx, dt, wheelbase, state, u);
+        predict_function(hx, dt, wheelbase, state, u);
     }
     if(Hx != 0) { 
-        gen_predict_function_jac_state(Hx, dt, wheelbase, state, u);
+        predict_function_jac_state(Hx, dt, wheelbase, state, u);
     }
 }
 // Jacobian of predict_function wrt [u0, u1]
-static inline void gen_predict_function_jac_u(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_u(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
 	const FLT u1 = u[1];
@@ -108,30 +105,29 @@ static inline void gen_predict_function_jac_u(CnMat* Hx, const FLT dt, const FLT
 	const FLT x6 = x0 * x0;
 	const FLT x7 = 1 + x6;
 	const FLT x8 = (1. / x6) * x7 * wheelbase;
-	const FLT x9 = sin(x3);
-	const FLT x10 = u0 * x7;
-	const FLT x11 = (1. / x0) * x10;
-	const FLT x12 = x9 * dt;
-	cnSetZero(Hx);
+	const FLT x9 = u0 * x7;
+	const FLT x10 = (1. / x0) * x9;
+	const FLT x11 = sin(x3);
+	const FLT x12 = dt * x11;
 	cnMatrixOptionalSet(Hx, 0, 0, x5);
-	cnMatrixOptionalSet(Hx, 0, 1, (x5 * x11) + (x8 * sin(state2)) + (-1 * x8 * x9));
+	cnMatrixOptionalSet(Hx, 0, 1, (-1 * x8 * x11) + (x8 * sin(state2)) + (x5 * x10));
 	cnMatrixOptionalSet(Hx, 1, 0, x12);
-	cnMatrixOptionalSet(Hx, 1, 1, (x4 * x8) + (-1 * x8 * cos(state2)) + (x12 * x11));
+	cnMatrixOptionalSet(Hx, 1, 1, (x4 * x8) + (-1 * x8 * cos(state2)) + (x12 * x10));
 	cnMatrixOptionalSet(Hx, 2, 0, x2);
-	cnMatrixOptionalSet(Hx, 2, 1, x1 * x10);
+	cnMatrixOptionalSet(Hx, 2, 1, x1 * x9);
 }
 
 // Full version Jacobian of predict_function wrt [u0, u1]
 
-static inline void gen_predict_function_jac_u_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+static inline void predict_function_jac_u_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
     if(hx != 0) { 
-        gen_predict_function(hx, dt, wheelbase, state, u);
+        predict_function(hx, dt, wheelbase, state, u);
     }
     if(Hx != 0) { 
-        gen_predict_function_jac_u(Hx, dt, wheelbase, state, u);
+        predict_function_jac_u(Hx, dt, wheelbase, state, u);
     }
 }
-static inline void gen_meas_function(CnMat* out, const FLT* state, const FLT* landmark) {
+static inline void meas_function(CnMat* out, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
 	const FLT state2 = state[2];
@@ -139,13 +135,12 @@ static inline void gen_meas_function(CnMat* out, const FLT* state, const FLT* la
 	const FLT landmark1 = landmark[1];
 	const FLT x0 = landmark1 + (-1 * state1);
 	const FLT x1 = landmark0 + (-1 * state0);
-	cnSetZero(out);
 	cnMatrixOptionalSet(out, 0, 0, sqrt((x1 * x1) + (x0 * x0)));
 	cnMatrixOptionalSet(out, 1, 0, atan2(x0, x1) + (-1 * state2));
 }
 
 // Jacobian of meas_function wrt [state0, state1, state2]
-static inline void gen_meas_function_jac_state(CnMat* Hx, const FLT* state, const FLT* landmark) {
+static inline void meas_function_jac_state(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
 	const FLT landmark0 = landmark[0];
@@ -155,9 +150,9 @@ static inline void gen_meas_function_jac_state(CnMat* Hx, const FLT* state, cons
 	const FLT x2 = (x1 * x1) + (x0 * x0);
 	const FLT x3 = 1. / sqrt(x2);
 	const FLT x4 = 1. / x2;
-	cnSetZero(Hx);
 	cnMatrixOptionalSet(Hx, 0, 0, -1 * x1 * x3);
 	cnMatrixOptionalSet(Hx, 0, 1, -1 * x0 * x3);
+	cnMatrixOptionalSet(Hx, 0, 2, 0);
 	cnMatrixOptionalSet(Hx, 1, 0, x0 * x4);
 	cnMatrixOptionalSet(Hx, 1, 1, -1 * x1 * x4);
 	cnMatrixOptionalSet(Hx, 1, 2, -1);
@@ -165,16 +160,16 @@ static inline void gen_meas_function_jac_state(CnMat* Hx, const FLT* state, cons
 
 // Full version Jacobian of meas_function wrt [state0, state1, state2]
 
-static inline void gen_meas_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
+static inline void meas_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
     if(hx != 0) { 
-        gen_meas_function(hx, state, landmark);
+        meas_function(hx, state, landmark);
     }
     if(Hx != 0) { 
-        gen_meas_function_jac_state(Hx, state, landmark);
+        meas_function_jac_state(Hx, state, landmark);
     }
 }
 // Jacobian of meas_function wrt [landmark0, landmark1]
-static inline void gen_meas_function_jac_landmark(CnMat* Hx, const FLT* state, const FLT* landmark) {
+static inline void meas_function_jac_landmark(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
 	const FLT landmark0 = landmark[0];
@@ -184,7 +179,6 @@ static inline void gen_meas_function_jac_landmark(CnMat* Hx, const FLT* state, c
 	const FLT x2 = (x1 * x1) + (x0 * x0);
 	const FLT x3 = 1. / sqrt(x2);
 	const FLT x4 = 1. / x2;
-	cnSetZero(Hx);
 	cnMatrixOptionalSet(Hx, 0, 0, x1 * x3);
 	cnMatrixOptionalSet(Hx, 0, 1, x0 * x3);
 	cnMatrixOptionalSet(Hx, 1, 0, -1 * x0 * x4);
@@ -193,11 +187,11 @@ static inline void gen_meas_function_jac_landmark(CnMat* Hx, const FLT* state, c
 
 // Full version Jacobian of meas_function wrt [landmark0, landmark1]
 
-static inline void gen_meas_function_jac_landmark_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
+static inline void meas_function_jac_landmark_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
     if(hx != 0) { 
-        gen_meas_function(hx, state, landmark);
+        meas_function(hx, state, landmark);
     }
     if(Hx != 0) { 
-        gen_meas_function_jac_landmark(Hx, state, landmark);
+        meas_function_jac_landmark(Hx, state, landmark);
     }
 }

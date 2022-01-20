@@ -48,7 +48,7 @@ struct BearingsOnlyTracking : public cnkalman::KalmanModel {
 
         bool predict_measurement(const CnMat &x_t, CnMat *pz, CnMat *h) override {
             FLT landmark[] = { px, py };
-            gen_bearings_meas_function_jac_state_with_hx(h, pz, x_t.data, landmark);
+            bearings_meas_function_jac_state_with_hx(h, pz, x_t.data, landmark);
 
             return h == nullptr || cn_is_finite(h);
         }

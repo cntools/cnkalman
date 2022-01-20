@@ -71,9 +71,8 @@ static void cnkalman_find_error_state(void* user, cnkalman_state_t *k, const CnM
 	if (k->ErrorState_fn) {
 		k->ErrorState_fn(user, x0, x1, error_state, 0);
 		k->Update_fn(user, x0, error_state, &verify_x, 0);
-		cn_elementwise_subtract(&verify_x, x1, &verify_x);
-		FLT err = cn_sum(&verify_x);
-		assert(cn_sum(&verify_x) < 1e-4);
+		FLT err = cnDistance(&verify_x, x1);
+		assert(err < 1e-4);
 	} else {
 		cnSub(error_state, x1, x0);
 	}
