@@ -29,6 +29,9 @@ if(GTest_FOUND)
 
     add_executable(kalman_toy kalman_toy.cc)
     target_link_libraries(kalman_toy cnkalman GTest::gtest GTest::gtest_main)
-
     gtest_discover_tests(kalman_toy)
+
+    add_executable(cnkalman-tests multi_model_test.cc feature_tests.cc)
+    target_link_libraries(cnkalman-tests cnkalman GTest::gtest GTest::gtest_main)
+    gtest_discover_tests(cnkalman-tests)
 endif()

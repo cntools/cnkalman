@@ -17,14 +17,20 @@ static inline FLT mul_at_b_a(const struct CnMat *A, const struct CnMat *B) {
     return V.data[0];
 }
 
+CN_EXPORT_FUNCTION FLT calculate_v_meas(const struct CnMat *y, const struct CnMat *iR) {
+        return .5 * mul_at_b_a(y, iR);
+}
+CN_EXPORT_FUNCTION FLT calculate_v_delta(const struct CnMat *xDiff, const struct CnMat *iP) {
+    return .5 * mul_at_b_a(xDiff, iP);
+}
 CN_EXPORT_FUNCTION FLT calculate_v(const struct CnMat *y, const struct CnMat *xDiff, const struct CnMat *iR,
                                    const struct CnMat *iP, FLT *meas_part, FLT *delta_part) {
     if (delta_part == 0) {
-        return *meas_part = .5 * mul_at_b_a(y, iR);
+        return *meas_part = calculate_v_meas(y, iR);
     }
-    *meas_part = .5 * mul_at_b_a(y, iR);
-    *delta_part = .5 * mul_at_b_a(xDiff, iP);
-    return .5 * (*meas_part + *delta_part);
+    *meas_part = calculate_v_meas(y, iR);
+    *delta_part = calculate_v_delta(xDiff, iP);
+    return  *meas_part + *delta_part;
 }
 
 const char *cnkalman_update_extended_termination_reason_to_str(
@@ -50,7 +56,7 @@ const char *cnkalman_update_extended_termination_reason_to_str(
 }
 
 static inline enum cnkalman_update_extended_termination_reason
-cnkalman_termination_criteria(cnkalman_state_t *k, const struct term_criteria_t *term_criteria,
+cnkalman_termination_criteria(const struct term_criteria_t *term_criteria,
                                     FLT initial_error, FLT error, FLT alpha, FLT last_error) {
     FLT minimum_step = term_criteria->minimum_step > 0 ? term_criteria->minimum_step : .01;
     if (alpha == 0 || alpha < minimum_step) {
@@ -88,6 +94,22 @@ void cnkalman_update_state(void* user, cnkalman_state_t *k, const CnMat* x0, FLT
 	}
 }
 
+#define FOR_EACH_STATE(mk) \
+for(int i = 0, filter_idx = 0, state_idx = 0;i < mk->ks_cnt;i++) {\
+cnkalman_state_t * k = mk->ks[i];                                 \
+CnMat error_state_delta_view = cnMatView(k->error_state_size, 1, &error_state_delta, filter_idx, 0);\
+CnMat xn_view = cnMatView(k->state_cnt, 1, &xn, state_idx, 0);    \
+CnMat iPdx_view = cnMatView(k->error_state_size, 1, &iPdx, filter_idx, 0);\
+CnMat x_i_view = cnMatConstView(k->state_cnt, 1, &x_i, state_idx, 0);                         \
+CnMat error_state_view = cnMatView(k->error_state_size, 1, &error_state, filter_idx, 0);\
+const CnMat x_k_k1_view = cnMatConstView(k->state_cnt, 1, x_k_k1, state_idx, 0);\
+
+
+#define END_FOR_EACH_STATE()\
+filter_idx += k->error_state_size;\
+state_idx += k->state_cnt;\
+}
+
 // Extended Kalman Filter Modifications Based on an Optimization View Point
 // https://www.diva-portal.org/smash/get/diva2:844060/FULLTEXT01.pdf
 // Note that in this document, 'y' is the measurement; which we refer to as 'Z'
@@ -107,11 +129,12 @@ void cnkalman_update_state(void* user, cnkalman_state_t *k, const CnMat* x0, FLT
 // ΔV(X) =  -(R^-.5 * H) * (R^-.5 * y) - P^-.5 * (P^-.5 * (x_t-1 * x))
 // ΔV(X) =  H' * R^-1 * y - P^-1 * (x_t-1 * x)
 // The point of all of this is that we don't need to ever explicitly calculate R^-.5 / P^-.5; just the inverses
-FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const struct CnMat *R,
-                                         cnkalman_meas_model_t *mk, void *user, const CnMat *x_k_k1, CnMat *K,
+FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, const struct CnMat *R,
+                                         void *user, const CnMat *x_k_k1, CnMat *K,
                                          CnMat *H, CnMat *x_k_k, struct cnkalman_update_extended_stats_t *stats) {
-	int state_cnt = k->state_cnt;
-	int filter_cnt = k->error_state_size;
+    int state_cnt = cnkalman_model_state_count(mk);
+    int filter_cnt = cnkalman_model_filter_count(mk);
+
     int meas_cnt = Z->rows;
 
     CN_CREATE_STACK_MAT(y, meas_cnt, 1);
@@ -128,12 +151,16 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
     }
     // kalman_print_mat_v(k, 100, "iR", &iR, true);
 
-    CN_CREATE_STACK_MAT(iP, filter_cnt, filter_cnt);
-    cnInvert(&k->P, &iP, CN_INVERT_METHOD_SVD);
-	assert(sane_covariance(&k->P));
-    // kalman_print_mat_v(k, 100, "iP", &iP, true);
+    CnMat iPS[CNKALMAN_STATES_PER_MODEL] = { 0 };
+    for(int i = 0;i < mk->ks_cnt;i++) {
+        CN_CREATE_STACK_MAT(iP, mk->ks[i]->error_state_size, mk->ks[i]->error_state_size);
+        cnInvert(&mk->ks[i]->P, &iP, CN_INVERT_METHOD_SVD);
+        iPS[i] = iP;
 
-    assert(cn_is_finite(&iP));
+        assert(sane_covariance(&mk->ks[i]->P));
+        assert(cn_is_finite(&iP));
+    }
+
     assert(cn_is_finite(&iR));
 
     enum cnkalman_update_extended_termination_reason stop_reason =
@@ -173,11 +200,16 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         }
         last_norm = current_norm;
 
+        delta_part = 0;
 		if(iter != 0) {
-			cnkalman_find_error_state(user, k, x_k_k1, &x_i, &error_state);
+		    FOR_EACH_STATE(mk)
+                cnkalman_find_error_state(user, k, &x_k_k1_view, &x_i_view, &error_state_view);
+                delta_part += calculate_v_delta(&error_state_view, &iPS[i]);
+		    END_FOR_EACH_STATE()
 		}
+        meas_part = calculate_v_meas(&y, &iR);
 
-        current_norm = calculate_v(&y, &error_state, &iR, &iP, &meas_part, iter == 0 ? 0 : &delta_part);
+        current_norm = meas_part + delta_part;
         assert(current_norm >= 0);
 
 
@@ -189,7 +221,9 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
 
 		// dVt = H * (R^-1 * y)' - iP * error_state
 		if(iter != 0) {
-			cnGEMM(&iP, &error_state, 1, 0, 0, &iPdx, 0);
+            FOR_EACH_STATE(mk)
+                cnGEMM(&iPS[i], &error_state_view, 1, 0, 0, &iPdx_view, 0);
+            END_FOR_EACH_STATE()
 		}
 		cnGEMM(H, &iRy, -1, &iPdx, -1, &dVt, CN_GEMM_FLAG_A_T);
 
@@ -202,10 +236,10 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         }
 
         // Run update; filling in K
-        cnkalman_find_k(k, K, H, R);
+        cnkalman_find_k(mk, K, H, R);
 
         if ((stop_reason =
-                     cnkalman_termination_criteria(k, &mk->term_criteria, initial_norm, current_norm, 1, last_norm)) >
+                     cnkalman_termination_criteria(&mk->term_criteria, initial_norm, current_norm, 1, last_norm)) >
             cnkalman_update_extended_termination_reason_none) {
             goto end_of_loop;
         }
@@ -232,21 +266,22 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
         while (!exit_condition) {
             exit_condition = true;
 
-			cnkalman_update_state(user, k, &x_i, scale, &error_state_delta, &xn);
+            FOR_EACH_STATE(mk)
+                cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &xn_view);
+            END_FOR_EACH_STATE()
 
             mk->Hfn(user, Z, &xn, &y, 0);
             if (stats) {
                 stats->fevals++;
             }
 
-			cnkalman_find_error_state(user, k, x_k_k1, &xn, &error_state);
-
-            fa = calculate_v(&y, &error_state, &iR, &iP, &meas_part, &delta_part);
-            if (k->log_level >= 1000) {
-                fprintf(stdout, "%3f: %7.7f ", scale, fa);
-                kalman_print_mat_v(k, 1000, "at x", &xn, false);
-            }
-            //assert(fa >= 0);
+            fa = 0;
+            FOR_EACH_STATE(mk)
+                cnkalman_find_error_state(user, k, &x_k_k1_view, &xn_view, &error_state_view);
+                cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &xn_view);
+                fa += calculate_v_delta(&error_state_view, &iPS[i]);
+            END_FOR_EACH_STATE()
+            fa = calculate_v_meas(&y, &iR) * 0.5 + fa * 0.5;
 
             if (fa >= current_norm + scale * m * c) {
                 exit_condition = false;
@@ -269,22 +304,19 @@ FLT cnkalman_run_iterations(cnkalman_state_t *k, const struct CnMat *Z, const st
             stats->total_stats->step_acc += scale;
         }
 
-		cnkalman_update_state(user, k, &x_i, scale, &error_state_delta, &x_i);
+        FOR_EACH_STATE(mk)
+            cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &x_i_view);
 
-        if (k->normalize_fn) {
-            k->normalize_fn(k->user, &x_i);
-        }
-        assert(cn_is_finite(&x_i));
+            if (k->normalize_fn) {
+                k->normalize_fn(k->user, &x_i);
+            }
+            assert(cn_is_finite(&x_i));
+        END_FOR_EACH_STATE()
 
         end_of_loop:
-        if (k->log_level > 1000) {
-            fprintf(stdout, "%3d: %7.7f / %7.7f (%f, %f, %f) ", iter, initial_norm, current_norm, scale, m,
-                    cnNorm(&error_state_delta));
-            kalman_print_mat_v(k, 1000, "new x", &x_i, false);
-        }
         if (stop_reason == cnkalman_update_extended_termination_reason_none)
             stop_reason =
-                    cnkalman_termination_criteria(k, &mk->term_criteria, initial_norm, current_norm, scale, last_norm);
+                    cnkalman_termination_criteria(&mk->term_criteria, initial_norm, current_norm, scale, last_norm);
     }
     if (stop_reason == cnkalman_update_extended_termination_reason_none)
         stop_reason = cnkalman_update_extended_termination_reason_maxiter;

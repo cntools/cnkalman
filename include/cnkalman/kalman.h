@@ -157,8 +157,11 @@ typedef struct cnkalman_state_s {
 	void (*datalog)(const struct cnkalman_state_s *state, const char *name, const FLT *v, size_t length);
 } cnkalman_state_t;
 
+#define CNKALMAN_STATES_PER_MODEL 8
 typedef struct cnkalman_meas_model {
-	cnkalman_state_t *k;
+	cnkalman_state_t* ks[CNKALMAN_STATES_PER_MODEL];
+	size_t ks_cnt;
+	//cnkalman_state_t *k;
     enum cnkalman_jacobian_mode meas_jacobian_mode;
 	size_t numeric_misses, numeric_calcs;
 	FLT numeric_step_size;
@@ -244,6 +247,9 @@ CN_EXPORT_FUNCTION void cnkalman_error_state_init(cnkalman_state_t *k, size_t st
 
 CN_EXPORT_FUNCTION void cnkalman_meas_model_init(cnkalman_state_t *k, const char *name,
 												   cnkalman_meas_model_t *mk, kalman_measurement_model_fn_t Hfn);
+CN_EXPORT_FUNCTION void cnkalman_meas_model_multi_init(cnkalman_state_t **k, size_t k_cnt, const char *name,
+                                                 cnkalman_meas_model_t *mk, kalman_measurement_model_fn_t Hfn);
+
 CN_EXPORT_FUNCTION void cnkalman_state_reset(cnkalman_state_t *k);
 
 CN_EXPORT_FUNCTION void cnkalman_state_free(cnkalman_state_t *k);
@@ -251,6 +257,8 @@ CN_EXPORT_FUNCTION void cnkalman_set_P(cnkalman_state_t *k, const FLT *d);
 CN_EXPORT_FUNCTION void cnkalman_set_logging_level(cnkalman_state_t *k, int verbosity);
 
 CN_EXPORT_FUNCTION void cnkalman_linear_update(struct CnMat *F, const struct CnMat *x0, struct CnMat *x1);
+
+CN_EXPORT_FUNCTION void cnkalman_linear_transition_fn(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0, struct CnMat *x1, struct CnMat *f_out);
 
 #ifdef __cplusplus
 }

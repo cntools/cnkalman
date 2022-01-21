@@ -5,17 +5,7 @@
 #include <stdlib.h>
 
 #include <gtest/gtest.h>
-
-
-#define ASSERT_DOUBLE_ARRAY_EQ(n, arr1, arr2)                                                                          \
-	for (int i = 0; i < n; i++) {                                                                                      \
-		ASSERT_DOUBLE_EQ(arr1[i], arr2[i]);                                                                            \
-	}
-
-#define EXPECT_ARRAY_NEAR(n, arr1, arr2, abs_error)                                                                          \
-	for (int i = 0; i < n; i++) {                                                                                      \
-		EXPECT_NEAR(arr1[i], arr2[i], abs_error);                                                                            \
-	}
+#include "test_utils.h"
 
 // Generates the transition matrix F
 void transition(FLT dt, const struct cnkalman_state_s *k, const struct CnMat *x0,
@@ -80,7 +70,8 @@ void run_standard_experiment(LinmathPoint2d X_out, FLT *P, const term_criteria_t
 	}
 
 	struct cnkalman_meas_model meas_model = {
-		.k = &state,
+		.ks = {&state},
+		.ks_cnt = 1,
 		.Hfn = toy_measurement_model,
 		.term_criteria = *termCriteria,
 	};
@@ -192,7 +183,8 @@ void run_standard_experiment2(LinmathPoint2d X_out, FLT *P, const term_criteria_
 	Z.data[0] = -true_state[0] * true_state[0];
 
 	cnkalman_meas_model_t measModel = {
-		.k = &state,
+		.ks = {&state},
+		.ks_cnt = 1,
 		.Hfn = toy_measurement_model2,
 		.term_criteria = *termCriteria,
 	};
