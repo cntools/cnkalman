@@ -273,7 +273,7 @@ int cnkalman_model_state_count(const cnkalman_meas_model_t *mk) {
 int cnkalman_model_filter_count(const cnkalman_meas_model_t *mk) {
     int rtn = 0;
     for(int i = 0;i < mk->ks_cnt;i++) {
-        rtn += mk->ks[i]->state_cnt;
+        rtn += mk->ks[i]->error_state_size;
     }
     return rtn;
 }
@@ -283,7 +283,7 @@ void cnkalman_find_k(const cnkalman_meas_model_t *mk, cnkalman_gain_matrix *K, c
     int state_cnt = cnkalman_model_state_count(mk);
     int filter_cnt = cnkalman_model_filter_count(mk);
 
-	CN_CREATE_STACK_MAT(Pk_k1Ht, state_cnt, H->rows);
+	CN_CREATE_STACK_MAT(Pk_k1Ht, filter_cnt, H->rows);
     CN_CREATE_STACK_MAT(S, H->rows, H->rows);
     CN_CREATE_STACK_MAT(tmpS, H->rows, H->rows);
 
@@ -478,17 +478,16 @@ static inline bool compare_jacobs(const char* label, const CnMat *H, const CnMat
 CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struct CnMat *Z,
 										   const struct CnMat *x, CnMat *y, CnMat *H) {
 	kalman_measurement_model_fn_t Hfn = mk->Hfn;
-	int state_size = cnkalman_model_filter_count(mk);
+	int state_cnt = cnkalman_model_state_count(mk);
+	int filter_cnt = cnkalman_model_filter_count(mk);
 
 	if (H) {
 		cn_set_constant(H, INFINITY);
 	}
 
 	CnMat *rtn = 0;
-	CN_CREATE_STACK_MAT(HFullState, Z->rows, state_size);
+	CN_CREATE_STACK_MAT(HFullState, Z->rows, state_cnt);
 
-    int state_cnt = cnkalman_model_state_count(mk);
-    int filter_cnt = cnkalman_model_filter_count(mk);
     bool hasErrorState = state_cnt != filter_cnt;
 
     if (Hfn) {
