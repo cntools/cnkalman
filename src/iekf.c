@@ -171,7 +171,7 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
     cn_matrix_copy(&x_i, x_k_k1);
     int iter;
     int max_iter = mk->term_criteria.max_iterations;
-    FLT meas_part, delta_part;
+    FLT meas_part = 0, delta_part = 0;
     CN_CREATE_STACK_MAT(Hxdiff, Z->rows, 1);
 	CN_CREATE_STACK_MAT(error_state_delta, filter_cnt, 1);
 	CN_CREATE_STACK_MAT(error_state_delta_scaled, filter_cnt, 1);
