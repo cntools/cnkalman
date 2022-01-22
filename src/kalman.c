@@ -297,7 +297,7 @@ void cnkalman_find_k(const cnkalman_meas_model_t *mk, cnkalman_gain_matrix *K, c
     for(int i = 0, state_idx = 0, filter_idx = 0;i < mk->ks_cnt;i++) {
 	    cnkalman_state_t* k = mk->ks[i];
         const CnMat *Pk_k = &k->P;
-        CnMat Pk_k1HtView = cnMatView(Pk_k->rows, H->rows, &Pk_k1Ht, state_idx, 0);
+        CnMat Pk_k1HtView = cnMatView(Pk_k->rows, H->rows, &Pk_k1Ht, filter_idx, 0);
         const CnMat HView = cnMatConstView(H->rows, k->error_state_size, H, 0, filter_idx);
         // Pk_k1Ht = P_k|k-1 * H^T
         cnGEMM(Pk_k, &HView, 1, 0, 0, &Pk_k1HtView, CN_GEMM_FLAG_B_T);
@@ -377,8 +377,11 @@ static inline void cnkalman_predict(FLT t, const cnkalman_state_t *k, const CnMa
 		kalman_print_mat(k, "x_t0_t0", x_t0_t0, false);
 	}
 	assert(cn_as_const_vector(x_t0_t0) != cn_as_const_vector(x_t0_t1));
-	if (t == k->t) {
+	if (t == k->t || k->Transition_fn == 0) {
 		cnCopy(x_t0_t0, x_t0_t1, 0);
+		if(F) {
+			cn_eye(F, 0);
+		}
 	} else {
 		//assert(t > k->t);
 		k->Transition_fn(t - k->t, k, x_t0_t0, x_t0_t1, F);
@@ -421,18 +424,28 @@ typedef struct numeric_jacobian_meas_fn_ctx {
 
 static bool numeric_jacobian_meas_fn(void * user, const struct CnMat *x, struct CnMat *y) {
     numeric_jacobian_meas_fn_ctx* ctx = user;
-	assert(ctx->mk->ks_cnt == 1);
-	cnkalman_state_t *k = ctx->mk->ks[0];
-	if(k->ErrorState_fn && ctx->mk->error_state_model) {
-		// x is in error state;
-		CN_CREATE_STACK_VEC(x1, k->state_cnt);
-		k->Update_fn(user, ctx->x, x, &x1, 0);
-		if(ctx->mk->Hfn(ctx->user, ctx->Z, &x1, y, 0) == 0)
-			return false;
-	} else {
-		if(ctx->mk->Hfn(ctx->user, ctx->Z, x, y, 0) == 0)
-			return false;
+
+	CN_CREATE_STACK_VEC(x1, cnkalman_model_state_count(ctx->mk));
+	for(int i = 0, state_idx = 0, filter_idx = 0;i < ctx->mk->ks_cnt;i++) {
+		cnkalman_state_t *k = ctx->mk->ks[i];
+
+		CnMat x1_view = cnMatView(k->state_cnt, 1, &x1, state_idx, 0);
+
+		if (k->ErrorState_fn && ctx->mk->error_state_model) {
+			const CnMat ctx_x_view = cnMatConstView(k->state_cnt, 1, ctx->x, state_idx, 0);
+			const CnMat x_view = cnMatConstView(k->error_state_size, 1, x, filter_idx, 0);
+			k->Update_fn(user, &ctx_x_view, &x_view, &x1_view, 0);
+		} else {
+			const CnMat x_view = cnMatConstView(k->state_cnt, 1, x, state_idx, 0);
+			cnCopy(&x_view, &x1_view, 0);
+		}
+
+		state_idx += k->state_cnt;
+		filter_idx += k->error_state_size;
 	}
+
+	if (ctx->mk->Hfn(ctx->user, ctx->Z, &x1, y, 0) == 0)
+		return false;
 
     // Hfn gives jacobian of measurement estimation E, y returns the residual (Z - E). So we invert it and its the form
     // we want going forward
@@ -816,7 +829,7 @@ FLT cnkalman_meas_model_predict_update(FLT t, struct cnkalman_meas_model *mk, vo
 
 FLT cnkalman_predict_update_state(FLT t, cnkalman_state_t *k, const struct CnMat *Z, const struct CnMat *H,
 										CnMat *R, bool adaptive) {
-	cnkalman_meas_model_t mk = {.adaptive = adaptive, .ks = {k}, .ks_cnt = 1};
+	cnkalman_meas_model_t mk = {.adaptive = adaptive, .ks = {k}, .ks_cnt = 1, .term_criteria = { .max_iterations = 10}};
 	return cnkalman_meas_model_predict_update(t, &mk, (void *)H, Z, R);
 }
 

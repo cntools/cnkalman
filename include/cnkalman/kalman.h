@@ -76,11 +76,14 @@ typedef struct term_criteria_t {
 	FLT xtol;
 
 	FLT mtol;
+
+	FLT max_error;
 } term_criteria_t;
 
 enum cnkalman_update_extended_termination_reason {
 	cnkalman_update_extended_termination_reason_none = 0,
 	cnkalman_update_extended_termination_reason_invalid_jacobian,
+	cnkalman_update_extended_termination_reason_too_high_error,
 	cnkalman_update_extended_termination_reason_maxiter,
 	cnkalman_update_extended_termination_reason_xtol,
 	cnkalman_update_extended_termination_reason_step,

@@ -77,8 +77,8 @@ static void cnkalman_find_error_state(void* user, cnkalman_state_t *k, const CnM
 	if (k->ErrorState_fn) {
 		k->ErrorState_fn(user, x0, x1, error_state, 0);
 		k->Update_fn(user, x0, error_state, &verify_x, 0);
-		FLT err = cnDistance(&verify_x, x1);
-		assert(err < 1e-4);
+		//FLT err = cnDistance(&verify_x, x1);
+		//assert(err < 1e-4);
 	} else {
 		cnSub(error_state, x1, x0);
 	}
@@ -183,6 +183,11 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
 
 	CN_CREATE_STACK_VEC(verify_x, state_cnt);
 
+	// `x_k_k1` is prior state
+	// `xi` is current iteration state; initializes as `x_k_k1`
+	// `error_state` is the difference in xi and x_k_k1
+	// `error_state_delta` is the max gain change for this iteration step; which is scaled down if its
+	//        too expensive
     for (iter = 0; iter < max_iter && stop_reason == cnkalman_update_extended_termination_reason_none; iter++) {
         // Find the residual y and possibly also the jacobian H. The user could have passed one in as 'user', or given
         // us a map function which will calculate it.
@@ -200,6 +205,7 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
         }
         last_norm = current_norm;
 
+		// error_state = x_k_k1 - x_i
         delta_part = 0;
 		if(iter != 0) {
 		    FOR_EACH_STATE(mk)
@@ -211,6 +217,19 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
 
         current_norm = meas_part + delta_part;
         assert(current_norm >= 0);
+
+		if (iter == 0) {
+			initial_norm = current_norm;
+			if (stats) {
+				stats->orignorm_meas += meas_part;
+				stats->origerror = cnNorm(&y);
+			}
+
+			if(initial_norm > mk->term_criteria.max_error && mk->term_criteria.max_error > 0) {
+				stop_reason = cnkalman_update_extended_termination_reason_too_high_error;
+				break;
+			}
+		}
 
 
         if (R->cols > 1) {
@@ -226,14 +245,6 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
             END_FOR_EACH_STATE()
 		}
 		cnGEMM(H, &iRy, -1, &iPdx, -1, &dVt, CN_GEMM_FLAG_A_T);
-
-        if (iter == 0) {
-            initial_norm = current_norm;
-            if (stats) {
-                stats->orignorm_meas += meas_part;
-                stats->origerror = cnNorm(&y);
-            }
-        }
 
         // Run update; filling in K
         cnkalman_find_k(mk, K, H, R);
@@ -266,22 +277,30 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
         while (!exit_condition) {
             exit_condition = true;
 
+			// xn = x_i + scale * error_state
             FOR_EACH_STATE(mk)
                 cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &xn_view);
             END_FOR_EACH_STATE()
 
-            mk->Hfn(user, Z, &xn, &y, 0);
+			if(mk->Hfn) {
+				mk->Hfn(user, Z, &xn, &y, 0);
+			} else {
+				cnGEMM((struct CnMat *)user, &xn, -1, Z, 1, &y, 0);
+			}
+
             if (stats) {
                 stats->fevals++;
             }
 
             fa = 0;
+			// error_state = x_k_k1 - xn
+			// xn = x_i_view * scale * error_state_delta
             FOR_EACH_STATE(mk)
                 cnkalman_find_error_state(user, k, &x_k_k1_view, &xn_view, &error_state_view);
                 cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &xn_view);
                 fa += calculate_v_delta(&error_state_view, &iPS[i]);
             END_FOR_EACH_STATE()
-            fa = calculate_v_meas(&y, &iR) * 0.5 + fa * 0.5;
+            fa = calculate_v_meas(&y, &iR) * 0.5 + fa;
 
             if (fa >= current_norm + scale * m * c) {
                 exit_condition = false;
@@ -304,11 +323,12 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
             stats->total_stats->step_acc += scale;
         }
 
+		// x_i = x_i + scale * error_state_delta
         FOR_EACH_STATE(mk)
             cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &x_i_view);
 
             if (k->normalize_fn) {
-                k->normalize_fn(k->user, &x_i);
+                k->normalize_fn(k->user, &x_i_view);
             }
             assert(cn_is_finite(&x_i));
         END_FOR_EACH_STATE()

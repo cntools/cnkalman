@@ -27,8 +27,8 @@ bool cnkalman_numerical_differentiate_step_size(void * user, enum cnkalman_numer
 			if (fn(user, &x, &y1) == false) return false;
 			xa[i] -= 2 * s;
 			if (fn(user, &x, &y2) == false) return false;
-			s = 2 * s;
 			xa[i] += s;
+			s = 2 * s;
 		} else {
 			s *= mode == cnkalman_numerical_differentiate_mode_one_sided_minus ? -1 : 1;
 			xa[i] += s;
