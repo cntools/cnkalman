@@ -50,6 +50,8 @@ const char *cnkalman_update_extended_termination_reason_to_str(
             return "step";
         case cnkalman_update_extended_termination_reason_mtol:
             return "mtol";
+		case cnkalman_update_extended_termination_reason_too_high_error:
+			return "maxerr";
         default:
             return "";
     }
@@ -230,7 +232,7 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
 				break;
 			}
 		}
-
+		//printf("%s iteration %2d: %7.7f/%7.7f %7.7f %7.7f\n", mk->name, iter, current_norm, initial_norm, meas_part, delta_part);
 
         if (R->cols > 1) {
             cnGEMM(&iR, &y, 1, 0, 0, &iRy, 0);
@@ -300,14 +302,18 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
                 cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &xn_view);
                 fa += calculate_v_delta(&error_state_view, &iPS[i]);
             END_FOR_EACH_STATE()
-            fa = calculate_v_meas(&y, &iR) * 0.5 + fa;
+            meas_part = calculate_v_meas(&y, &iR);
+			//printf("\tscale  %f: %7.7f/%7.7f %7.7f %7.7f\n", scale, current_norm, initial_norm, meas_part, fa);
+			fa += meas_part;
+
+			if (fa_best > fa) {
+				fa_best = fa;
+				a_best = scale;
+			}
 
             if (fa >= current_norm + scale * m * c) {
                 exit_condition = false;
-                if (fa_best > fa) {
-                    fa_best = fa;
-                    a_best = scale;
-                }
+
                 scale = tau * scale;
 
                 if (scale <= min_step) {
@@ -324,6 +330,7 @@ FLT cnkalman_run_iterations(cnkalman_meas_model_t *mk, const struct CnMat *Z, co
         }
 
 		// x_i = x_i + scale * error_state_delta
+		//printf("\tupdate %f: %7.7f/%7.7f\n", scale, fa_best, initial_norm);
         FOR_EACH_STATE(mk)
             cnkalman_update_state(user, k, &x_i_view, scale, &error_state_delta_view, &x_i_view);
 

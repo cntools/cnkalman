@@ -566,6 +566,7 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
             k->Update_fn(user, x, 0, 0, &Hxsx);
             cnGEMM(Hfn ? &HFullState : rtn, &Hxsx, 1, 0, 0, H, 0);
             rtn = H;
+			assert(!rtn || cn_is_finite(rtn));
         }
     }
 
@@ -774,6 +775,14 @@ static FLT cnkalman_predict_update_state_extended_adaptive_internal(
             cnkalman_find_residual(mk, user, Z, &x_k_k, &yp, 0);
 		    stats->origerror = sqrt(result);
             stats->besterror = cnNorm(&yp);
+			if(stats->total_stats) {
+				stats->total_stats->orignorm_acc += stats->origerror;
+				stats->total_stats->bestnorm_acc += stats->besterror;
+
+				stats->total_stats->total_runs++;
+				stats->total_stats->total_hevals++;
+				stats->total_stats->total_fevals++;
+			}
 		}
 	}
 

@@ -142,7 +142,7 @@ typedef struct cnkalman_state_s {
 	kalman_normalize_fn_t normalize_fn;
 	kalman_integrate_update_fn_t Update_fn;
 	kalman_error_state_model_fn_t ErrorState_fn;
-	size_t error_state_size;
+	int error_state_size;
 
 	// Store the current covariance matrix (state_cnt x state_cnt)
 	struct CnMat P;
