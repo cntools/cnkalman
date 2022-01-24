@@ -558,16 +558,25 @@ CnMat *cnkalman_find_residual(cnkalman_meas_model_t *mk, void *user, const struc
 		cnGEMM(rtn, x, -1, Z, 1, y, 0);
 	}
 
-    if(!mk->error_state_model && hasErrorState) {
-        assert(mk->ks_cnt == 1);
-        cnkalman_state_t *k = mk->ks[0];
-        if (k->Update_fn && rtn && H && !mk->error_state_model) {
-            CN_CREATE_STACK_MAT(Hxsx, k->state_cnt, k->error_state_size);
-            k->Update_fn(user, x, 0, 0, &Hxsx);
-            cnGEMM(Hfn ? &HFullState : rtn, &Hxsx, 1, 0, 0, H, 0);
-            rtn = H;
-			assert(!rtn || cn_is_finite(rtn));
-        }
+    if(!mk->error_state_model && hasErrorState && H) {
+		for(int i = 0, state_idx = 0, filter_idx = 0;i < mk->ks_cnt;i++) {
+			cnkalman_state_t* k = mk->ks[i];
+
+			CN_CREATE_STACK_MAT(Hxsx, k->state_cnt, k->error_state_size);
+			CnMat *HFn = Hfn ? &HFullState : rtn;
+			CnMat HFn_view = cnMatView(HFn->rows, k->state_cnt, HFn, 0, state_idx);
+			CnMat H_view = cnMatView(H->rows, k->error_state_size, H, 0, filter_idx);
+			if (k->Update_fn && rtn && H && !mk->error_state_model) {
+				const CnMat x_view = cnMatConstView(k->state_cnt, 1, x, state_idx, 0);
+				k->Update_fn(user, &x_view, 0, 0, &Hxsx);
+				cnGEMM(&HFn_view, &Hxsx, 1, 0, 0, &H_view, 0);
+			} else {
+				cnCopy(&HFn_view, &H_view, 0);
+			}
+			state_idx += k->state_cnt;
+			filter_idx += k->error_state_size;
+		}
+		rtn = H;
     }
 
 	assert(!rtn || cn_is_finite(rtn));
