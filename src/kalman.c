@@ -110,7 +110,7 @@ void cnkalman_error_state_init(cnkalman_state_t *k, size_t state_cnt, size_t err
 
 	k->Q_fn = q_fn;
 
-	size_t p_size = Err_F ? error_state_cnt : state_cnt;
+	size_t p_size = error_state_cnt;
 	k->P = cnMatCalloc(p_size, p_size);
 
 	k->Transition_fn = F;
@@ -300,9 +300,10 @@ void cnkalman_find_k(const cnkalman_meas_model_t *mk, cnkalman_gain_matrix *K, c
         CnMat Pk_k1HtView = cnMatView(Pk_k->rows, H->rows, &Pk_k1Ht, filter_idx, 0);
         const CnMat HView = cnMatConstView(H->rows, k->error_state_size, H, 0, filter_idx);
         // Pk_k1Ht = P_k|k-1 * H^T
-        cnGEMM(Pk_k, &HView, 1, 0, 0, &Pk_k1HtView, CN_GEMM_FLAG_B_T);
-
-        cnkalman_find_s(k, &S, &Pk_k1HtView, &HView);
+		if(Pk_k->rows != 0) {
+			cnGEMM(Pk_k, &HView, 1, 0, 0, &Pk_k1HtView, CN_GEMM_FLAG_B_T);
+			cnkalman_find_s(k, &S, &Pk_k1HtView, &HView);
+		}
 
         state_idx += k->state_cnt;
         filter_idx += k->error_state_size;
@@ -593,7 +594,8 @@ CN_EXPORT_FUNCTION void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t
 
 	int state_cnt = k->state_cnt;
 
-	size_t f_size = k->error_state_transition ? k->error_state_size : state_cnt;
+	bool FInErrorState = k->error_state_transition || k->Transition_fn == 0;
+	size_t f_size = (FInErrorState) ? k->error_state_size : state_cnt;
 	CN_CREATE_STACK_MAT(F, f_size, f_size);
 	CN_CREATE_STACK_MAT(FHxsx, k->error_state_size, k->error_state_size);
 	cn_set_constant(&F, NAN);
@@ -615,7 +617,7 @@ CN_EXPORT_FUNCTION void cnkalman_extrapolate_state(FLT t, const cnkalman_state_t
 
 		assert(cn_is_finite(&F));
 
-		if(k->Update_fn && k->error_state_transition == false) {
+		if(k->Update_fn && FInErrorState == false) {
 			CN_CREATE_STACK_MAT(OldXOlde, state_cnt, k->error_state_size);
 			k->Update_fn(k->user, &x_k1_k1, 0, 0, &OldXOlde);
 			CN_CREATE_STACK_MAT(NewENewX, k->error_state_size, state_cnt);
