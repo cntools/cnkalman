@@ -5,11 +5,12 @@
 static inline FLT mul_at_b_a(const struct CnMat *A, const struct CnMat *B) {
     CN_CREATE_STACK_MAT(V, 1, 1);
     assert(A->cols == 1);
-    CN_CREATE_STACK_MAT(AtiB, 1, B->rows);
     if (B->cols > 1) {
+		CN_CREATE_STACK_MAT(AtiB, 1, B->rows);
         cnGEMM(A, B, 1, 0, 0, &AtiB, CN_GEMM_FLAG_A_T);
         cnGEMM(&AtiB, A, 1, 0, 0, &V, 0);
     } else {
+		CN_CREATE_STACK_VEC(AtiB, B->rows);
         cnElementwiseMultiply(&AtiB, A, B);
         V.data[0] = cnDot(&AtiB, A);
     }
