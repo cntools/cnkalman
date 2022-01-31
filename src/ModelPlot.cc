@@ -1,4 +1,5 @@
 #include "cnkalman/ModelPlot.h"
+#include <algorithm>
 
 namespace cnkalman {
   ModelPlot::ModelPlot(const std::string &name, bool show) : show(show), name(name) {
