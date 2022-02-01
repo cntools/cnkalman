@@ -299,7 +299,7 @@ class WrapMember(WrapBase):
         if self._parent is stopat:
             return self._name
         return self._parent.accessor(stopat) + "." + self._name
-
+    def __repr__(self): return self.__str__()
 
 class WrapObject(WrapBase):
     def __init__(self, name, type, parent):
@@ -701,7 +701,8 @@ def get_file(fn):
     """/// NOTE: This is a generated file; do not edit.
 #pragma once
 #include <cnkalman/generated_header.h>
-// clang-format off    
+
+// clang-format off
 """)
     return generate_code_files[fn]
 
