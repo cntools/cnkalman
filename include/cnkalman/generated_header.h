@@ -1,4 +1,5 @@
 #pragma once
+#include <stddef.h>
 #include <math.h>
 static inline double __cnkalman_safe_sqrt(double x) { return x > 0 ? sqrt(x) : 0; }
 #define sqrt __cnkalman_safe_sqrt
