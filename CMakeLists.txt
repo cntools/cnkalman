@@ -45,7 +45,7 @@ function(cnkalman_generate_code FILE)
             DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/${FILE} ${cnkalman_root_source_dir}/cnkalman/codegen.py
             COMMENT "Generating ${DIR}/${NAME}.gen.h...")
   else()
-    message("Can't generate ${DIR}/${NAME}.gen.h -- ${cnkalman_root_source_dir}")
+    message("Using provided ${DIR}/${NAME}.gen.h")
   endif()
 endfunction()
 
