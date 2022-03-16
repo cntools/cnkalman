@@ -1,0 +1,16 @@
+[dependencies]
+opencv-contrib-python = "^4.5.1.48"
+scipy="^1.7.0"
+numpy="^1.19.5"
+opencv-python="^4.5.5.62"
+
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel",
+    "setuptools-git-versioning",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools-git-versioning]
+enabled = true
