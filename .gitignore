@@ -39,3 +39,5 @@ build
 venv
 .eggs/
 dist/
+
+**/*.egg-info/
