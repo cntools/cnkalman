@@ -887,22 +887,25 @@ def has_free_symbols(x):
     return False
 
 def generate_code(prefix="", **kwargs):
-
     def f(func):
-        f = get_file(inspect.getfile(func))
-        def g(*args):
-            grtn = func(*args)
-            if type(grtn) == symengine.MutableDenseMatrix:
+        try:
+            f = get_file(inspect.getfile(func))
+            def g(*args):
+                grtn = func(*args)
+                if type(grtn) == symengine.MutableDenseMatrix:
+                    return grtn
+                if has_free_symbols(grtn):
+                    return grtn
+                if isinstance(grtn, Iterable):
+                    return np.array(grtn, dtype=np.float64)
                 return grtn
-            if has_free_symbols(grtn):
-                return grtn
-            if isinstance(grtn, Iterable):
-                return np.array(grtn, dtype=np.float64)
-            return grtn
 
-        jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f, prefix=prefix, codegen= generate_pyxcode if f is not None and f.name.endswith(".pyx") else generate_ccode)
-        if jacs is not None:
-            for k, v in jacs.items():
-                setattr(g, k, functionify(args, v))
-        return g
+            jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f, prefix=prefix, codegen= generate_pyxcode if f is not None and f.name.endswith(".pyx") else generate_ccode)
+            if jacs is not None:
+                for k, v in jacs.items():
+                    setattr(g, k, functionify(args, v))
+            return g
+        except Exception as e:
+            print(f"Could not generate source level jacobians: {e}")
+            return func
     return f
