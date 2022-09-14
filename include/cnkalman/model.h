@@ -22,6 +22,9 @@ namespace cnkalman {
         cnkalman_update_extended_stats_t update(FLT t, const struct CnMat& Z, CnMat& R);
 
         virtual std::ostream& write(std::ostream&) const;
+        /***
+         * Given an assumed state x and measurement variance R, generate a plausible Z
+         */
         virtual void sample_measurement(const CnMat& x, struct CnMat& Z, const CnMat& R);
         virtual cnmatrix::Matrix default_R() {
             auto rtn = cnmatrix::Matrix(meas_cnt, meas_cnt);

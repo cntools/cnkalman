@@ -137,7 +137,7 @@ def ccode_wrapper(item, depth = 0):
         if item.args[0] == Abs(item.args[1]):
             return "((%s) > 0 ? 1 : -1) /* Note: Maybe not valid for == 0 */" % (item.args[1])
 
-    known_c_funcs = [ 'asin', 'cos', 'sin', 'atan2', 'tan']
+    known_c_funcs = [ 'asin', 'cos', 'sin', 'atan2', 'tan', 'atan']
     if item.__class__.__name__ not in known_c_funcs:
         print("Warning: Unhandled type " + item.__class__.__name__, file=sys.stderr)
     return item.__class__.__name__ + "(" + ", ".join(map(clean_parens, newargs)) + ")"
@@ -417,13 +417,23 @@ def arg_str(arg):
     a = arg[1]
     return "const %s %s" % (get_type(a), get_name(a))
 
+def arg_str_py(arg):
+    a = arg[1]
+    t = get_type(a)
+    t = t.replace("FLT*", "np.float32_t[:]")
+    return "%s %s" % (t, get_name(a))
+
 def generate_args_string(args, as_call = False):
     return ", ".join(map(lambda x: get_name(x[1]) if as_call else arg_str, enumerate(args)))
 
 def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = None, preamble = "", file=None, input_keys = None, prefix = ""):
     def emit_code(*args, **kwargs):
         if file is not None:
-            print(*args, **kwargs, file=file)
+            print(*args, **kwargs, file=file[0])
+
+    def emit_header(*args, **kwargs):
+        if file is not None:
+            print(*args, **kwargs, file=file[1])
 
     flatten, args = flatten_func(func, name, args, suffix, argument_specs)
     if flatten is None:
@@ -442,8 +452,6 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
 
     if suffix is not None:
         name = name + "_" + suffix
-
-    singular_return = len(flatten) == 1
 
     keys = None
     free_symbols = set()
@@ -468,10 +476,17 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
         cse_output = cse(symengine.Matrix(flatten))
         update_free_symbols(flatten)
 
-    if singular_return:
-        emit_code("def %s%s(%s):" % (prefix, name, ", ".join(map(arg_str, enumerate(args)))))
-    else:
-        emit_code("def %s%s(%s):" % (prefix, name, ", ".join(map(lambda x: x.n, args))))
+    emit_header("cpdef void %s%s(%s, %s) nogil " % (prefix,
+                                                  name,
+                                                  ", ".join(["np.float32_t[:,:] " + s[0] for s in outputs]),
+                                                  ", ".join(map(arg_str_py, enumerate(args)))
+                                                  ))
+
+    emit_code("cpdef void %s%s(%s, %s) nogil: " % (prefix,
+                                        name,
+                                        ", ".join(["np.float32_t[:,:] " + s[0] for s in outputs]),
+                                        ", ".join(map(arg_str_py, enumerate(args)))
+                                        ))
 
     if preamble:
         emit_code(preamble.strip("\r\n"))
@@ -493,7 +508,7 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
 
     for item in cse_output[0]:
         stripped_line = ccode(item[1]).replace("\n", " ").replace("\t", " ")
-        emit_code(f"\tcdef float {symengine.ccode(item[0])} = {stripped_line};")
+        emit_code(f"\tcdef float {symengine.ccode(item[0])} = {stripped_line}")
 
     output_idx = 0
     outputs_idx = 0
@@ -504,11 +519,11 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
             count_zeros += 1
     needs_set_zero = False#count_zeros > len(cse_output[1]) / 4
 
-    if keys is None and not singular_return:
+    if keys is None:
         current_shape = outputs[outputs_idx][1] if isinstance(outputs[outputs_idx][1], tuple) else [outputs[outputs_idx][1], 1]
         var = outputs[outputs_idx][0]
 
-    emit_code(f"\tcdef np.ndarray[float, ndim=2] {outputs[outputs_idx][0]} = np.zeros(({current_shape[0]},{current_shape[1]}), dtype=np.float32)")
+    emit_code(f"\t### cdef np.ndarray[float, ndim=2] {outputs[outputs_idx][0]} = np.zeros(({current_shape[0]},{current_shape[1]}), dtype=np.float32)")
     for item_idx, item in enumerate(cse_output[1]):
         if keys is None:
             current_shape = outputs[outputs_idx][1] if isinstance(outputs[outputs_idx][1], tuple) else [outputs[outputs_idx][1], 1]
@@ -533,14 +548,11 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
                     current_row = output_idx / current_shape[1]
                     current_col = output_idx % current_shape[1]
             else:
-                if singular_return:
-                    emit_code("\treturn %s;" % (ccode(item).replace("\n", " ").replace("\t", " ")))
-                else:
-                    if item != 0 or not needs_set_zero:
-                        emit_code("\t%s[%s,%s] = %s" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), ccode(item).replace("\n", " ").replace("\t", " ")))
+                if item != 0 or not needs_set_zero:
+                    emit_code("\t%s[%s,%s] = %s" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), ccode(item).replace("\n", " ").replace("\t", " ")))
                 output_idx += 1
             if output_idx >= math.prod(current_shape) > 0:
-                emit_code(f"\treturn {outputs[outputs_idx][0]}")
+                #emit_code(f"\treturn {outputs[outputs_idx][0]}")
                 outputs_idx += 1
                 output_idx = 0
         else:
@@ -828,9 +840,11 @@ def get_pyx_file(fn):
         return generate_code_files[fn]
     path = Path(fn)
     print(f"Generating {path.parent.as_posix()}/{path.stem}_gen.pyx...", file=sys.stderr)
-    f = generate_code_files[fn] = open(f"{path.parent.as_posix()}/{path.stem}_gen.pyx", 'w')
+    f = open(f"{path.parent.as_posix()}/{path.stem}_gen.pyx", 'w')
     f.write(
         """# NOTE: This is a generated file; do not edit.
+# cython: language_level=3
+# cython: boundscheck=False, wraparound=False, initializedcheck=False, cdivision=True, nonecheck=False, overflowcheck=False
 # clang-format off
 import cython
 import numpy as np
@@ -840,6 +854,16 @@ from libc.stdint cimport *
 from libc cimport *
 
 """)
+
+    g = open(f"{path.parent.as_posix()}/{path.stem}_gen.pxd", 'w')
+    g.write(
+        """# NOTE: This is a generated file; do not edit.
+# cython: language_level=3
+import numpy as np
+cimport numpy as np
+
+""")
+    generate_code_files[fn] = (f, g)
     return generate_code_files[fn]
 
 def get_file(fn):
@@ -900,7 +924,8 @@ def generate_code(prefix="", **kwargs):
                     return np.array(grtn, dtype=np.float64)
                 return grtn
 
-            jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f, prefix=prefix, codegen= generate_pyxcode if f is not None and f.name.endswith(".pyx") else generate_ccode)
+            is_pyx = isinstance(f, tuple)
+            jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f, prefix=prefix, codegen = generate_pyxcode if is_pyx else generate_ccode)
             if jacs is not None:
                 for k, v in jacs.items():
                     setattr(g, k, functionify(args, v))
