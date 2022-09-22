@@ -1,4 +1,5 @@
 import dataclasses
+import logging
 import math
 import sys
 import types
@@ -9,6 +10,10 @@ import sympy
 
 from symengine import cse
 from symengine import atan2, sqrt, cos, sin, Matrix, Pow, Mul, asin, Symbol, symbols, Abs, tan
+
+import logging
+
+dirty_python_hack = False
 
 def isinstance_namedtuple(obj) -> bool:
     return (
@@ -44,7 +49,7 @@ def make_sympy(expressions):
     if hasattr(expressions, "atoms"):
         return [expressions]
 
-    if isinstance(expressions, list):
+    if isinstance(expressions, list) or isinstance(expressions, np.ndarray):
         return symengine.MutableDenseMatrix([make_sympy(a) for a in expressions])
     if hasattr(expressions, 'symengine_type'):
         return expressions.symengine_type()
@@ -84,7 +89,17 @@ def clean_parens(txt):
         return clean_parens(txt[1:-1])
     return txt
 
-def ccode_wrapper(item, depth = 0):
+class c_formatter:
+    @staticmethod
+    def format_ternary(test, true_path, false_path, note = ""):
+        return "(%s ? %s : %s)%s" % (test, true_path, false_path, f" /* {note} */" if note else "")
+
+class pyx_formatter:
+    @staticmethod
+    def format_ternary(test, true_path, false_path, note = ""):
+        return f"({true_path} if {test} else {false_path})"
+
+def code_wrapper(formatter, item, depth = 0):
     #return symengine.ccode(item)
 
     if item.is_Atom:
@@ -94,7 +109,7 @@ def ccode_wrapper(item, depth = 0):
             return "false"
         return symengine.ccode(item)
 
-    newargs = list(map(lambda x: ccode_wrapper(x, depth+1), item.args))
+    newargs = list(map(lambda x: code_wrapper(formatter, x, depth+1), item.args))
 
     infixes = {
         Mul: '*',
@@ -132,10 +147,11 @@ def ccode_wrapper(item, depth = 0):
             return newargs[0]
         if item.args[1] == False:
             return newargs[2]
-        return "(%s ? %s : %s)" % (newargs[1], newargs[0], newargs[2])
+        return formatter.format_ternary(newargs[1], newargs[0], newargs[2])
     elif isinstance(item, symengine.Derivative):
         if item.args[0] == Abs(item.args[1]):
-            return "((%s) > 0 ? 1 : -1) /* Note: Maybe not valid for == 0 */" % (item.args[1])
+            return formatter.format_ternary(item.args[1] > 0, 1, -1, note="Note: Maybe not valid for == 0")
+            #return "((%s) > 0 ? 1 : -1) /* Note: Maybe not valid for == 0 */" % (item.args[1])
 
     known_c_funcs = [ 'asin', 'cos', 'sin', 'atan2', 'tan', 'atan']
     if item.__class__.__name__ not in known_c_funcs:
@@ -144,7 +160,10 @@ def ccode_wrapper(item, depth = 0):
     #raise Exception("Unhandled type " + item.__class__.__name__)
 
 def ccode(item):
-    return clean_parens(ccode_wrapper(item))
+    return clean_parens(code_wrapper(c_formatter, item))
+
+def pyxcode(item):
+    return clean_parens(code_wrapper(pyx_formatter, item))
 
 def sanitize_name(n):
     if len(n) > 1 and n[0] == 'x' and str(n[1:]).isdigit():
@@ -190,7 +209,8 @@ class WrapBase:
 
     def accessor(self, stopat = None):
         if self._parent is None:
-            return f"(*{self._name})"
+            global dirty_python_hack
+            return f"(*{self._name})" if not dirty_python_hack else self._name
         if self._parent is stopat:
             return self._name
         return self._parent.accessor(stopat) + "." + self._name
@@ -199,6 +219,8 @@ class WrapBase:
         if self == r:
             return None
         if hasattr(r, '_type'):
+            if dirty_python_hack:
+                return 0
             return f"offsetof({r._type.__name__}, {self.accessor(r)})/sizeof(FLT)"
         return None
     def symengine_type(self):
@@ -360,7 +382,7 @@ import inspect
 
 def flatten_func(func, name=None, args=None, suffix = None, argument_specs ={}):
     if callable(func):
-        name = func.__name__
+        name = func.__qualname__.replace(".", "_")
         annotations = inspect.getfullargspec(func).annotations
         args = [get_argument(n, argument_specs, annotations.get(n)) for n in inspect.getfullargspec(func).args]
 
@@ -421,19 +443,22 @@ def arg_str_py(arg):
     a = arg[1]
     t = get_type(a)
     t = t.replace("FLT*", "np.float32_t[:]")
+    t = t.replace("FLT", "np.float32_t")
     return "%s %s" % (t, get_name(a))
 
 def generate_args_string(args, as_call = False):
     return ", ".join(map(lambda x: get_name(x[1]) if as_call else arg_str, enumerate(args)))
 
-def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = None, preamble = "", file=None, input_keys = None, prefix = ""):
+def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = None, preamble = "", file=None, input_keys = None, prefix = ""):    
     def emit_code(*args, **kwargs):
         if file is not None:
             print(*args, **kwargs, file=file[0])
+            file[0].flush()
 
     def emit_header(*args, **kwargs):
         if file is not None:
             print(*args, **kwargs, file=file[1])
+            file[1].flush()
 
     flatten, args = flatten_func(func, name, args, suffix, argument_specs)
     if flatten is None:
@@ -446,7 +471,7 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
             outputs = [("out", -1)]
 
     if callable(func):
-        name = func.__name__
+        name = func.__qualname__.replace(".", "_")
         annotations = inspect.getfullargspec(func).annotations
         args = [get_argument(n, argument_specs, annotations.get(n)) for n in inspect.getfullargspec(func).args]
 
@@ -464,7 +489,11 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
             for v1 in v:
                 update_free_symbols(v1)
 
+    type_name = "np.float32_t[:,:]"
+    type = None
     if isinstance(flatten, dict):
+        type_name = flatten["$original"].__class__.__name__
+        type = flatten["$original"].__class__
         flatten.pop("$original")
         keys = list(flatten.keys())
         values = [flatten[k] for k in keys]
@@ -476,15 +505,16 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
         cse_output = cse(symengine.Matrix(flatten))
         update_free_symbols(flatten)
 
-    emit_header("cpdef void %s%s(%s, %s) nogil " % (prefix,
+    func_name = name
+    emit_header("cdef void %s%s_nogil(%s, %s) nogil " % (prefix,
                                                   name,
-                                                  ", ".join(["np.float32_t[:,:] " + s[0] for s in outputs]),
+                                                  ", ".join([f"{type_name} " + s[0] for s in outputs]),
                                                   ", ".join(map(arg_str_py, enumerate(args)))
                                                   ))
 
-    emit_code("cpdef void %s%s(%s, %s) nogil: " % (prefix,
+    emit_code("cdef void %s%s_nogil(%s, %s) nogil: " % (prefix,
                                         name,
-                                        ", ".join(["np.float32_t[:,:] " + s[0] for s in outputs]),
+                                        ", ".join([f"{type_name} " + s[0] for s in outputs]),
                                         ", ".join(map(arg_str_py, enumerate(args)))
                                         ))
 
@@ -497,7 +527,7 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
             name = get_name(a)
             for k, v in flatten_args(a()):
                 if f"{name}{k.strip('[]')}" in free_symbols:
-                    emit_code("\tcdef float %s = %s%s" % (str(v), "(*"+name+")" if isinstance_namedtuple(a()) else name, k))
+                    emit_code("\tcdef float %s = %s%s" % (str(v), "("+name+")" if isinstance_namedtuple(a()) else name, k))
         elif isinstance(a, WrapTuple):
             name = get_name(a)
             digits = math.floor(math.log(len(a.t)))
@@ -507,7 +537,7 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
                     emit_code("\tcdef float %s = %s%s" % (str(v), name, k))
 
     for item in cse_output[0]:
-        stripped_line = ccode(item[1]).replace("\n", " ").replace("\t", " ")
+        stripped_line = pyxcode(item[1]).replace("\n", " ").replace("\t", " ")
         emit_code(f"\tcdef float {symengine.ccode(item[0])} = {stripped_line}")
 
     output_idx = 0
@@ -519,11 +549,15 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
             count_zeros += 1
     needs_set_zero = False#count_zeros > len(cse_output[1]) / 4
 
+    current_shape = None
     if keys is None:
         current_shape = outputs[outputs_idx][1] if isinstance(outputs[outputs_idx][1], tuple) else [outputs[outputs_idx][1], 1]
         var = outputs[outputs_idx][0]
-
-    emit_code(f"\t### cdef np.ndarray[float, ndim=2] {outputs[outputs_idx][0]} = np.zeros(({current_shape[0]},{current_shape[1]}), dtype=np.float32)")
+        emit_code(
+            f"\t### cdef np.ndarray[float, ndim=2] {outputs[outputs_idx][0]} = np.zeros(({current_shape[0]},{current_shape[1]}), dtype=np.float32)")
+    else:
+        pass
+    
     for item_idx, item in enumerate(cse_output[1]):
         if keys is None:
             current_shape = outputs[outputs_idx][1] if isinstance(outputs[outputs_idx][1], tuple) else [outputs[outputs_idx][1], 1]
@@ -539,17 +573,18 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
             def get_row_str():
                 if input_keys is not None:
                     root, path = input_keys[current_row]
+                    return 0
                     return f"offsetof({root}, {path})/sizeof(FLT)"
                 return str(current_row)
             if hasattr(item, "tolist"):
                 for item1 in sum(item.tolist(), []):
-                    emit_code("\t%s[%s,%s] = %s" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), output_idx, ccode(item1).replace("\n", " ").replace("\t", " ")))
+                    emit_code("\t%s[%s,%s] = %s" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), output_idx, pyxode(item1).replace("\n", " ").replace("\t", " ")))
                     output_idx += 1
                     current_row = output_idx / current_shape[1]
                     current_col = output_idx % current_shape[1]
             else:
                 if item != 0 or not needs_set_zero:
-                    emit_code("\t%s[%s,%s] = %s" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), ccode(item).replace("\n", " ").replace("\t", " ")))
+                    emit_code("\t%s[%s,%s] = %s" % (outputs[outputs_idx][0], get_row_str(), get_col_str(), pyxcode(item).replace("\n", " ").replace("\t", " ")))
                 output_idx += 1
             if output_idx >= math.prod(current_shape) > 0:
                 #emit_code(f"\treturn {outputs[outputs_idx][0]}")
@@ -557,9 +592,25 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
                 output_idx = 0
         else:
             nl = "\n"
-            emit_code(f"\tout->{keys[item_idx]}={ccode(item).replace(nl, '')};")
+            emit_code(f"\tout.{keys[item_idx]}={pyxcode(item).replace(nl, '')}")
 
     emit_code("")
+
+    emit_code("cpdef void %s%s(%s, %s): " % (prefix,
+                                                  func_name,
+                                                  ", ".join([f"{type_name} " + s[0] for s in outputs]),
+                                                  ", ".join(map(arg_str_py, enumerate(args)))
+                                                  ))
+    call_args = ",".join([s[0] for s in outputs]) + ", " + generate_args_string(args, as_call=True)
+    emit_code(f"\t{prefix}{func_name}_nogil({call_args})")
+
+    emit_header("cpdef void %s%s(%s, %s)" % (prefix,
+                                             func_name,
+                                             ", ".join([f"{type_name} " + s[0] for s in outputs]),
+                                             ", ".join(map(arg_str_py, enumerate(args)))
+                                             ))
+    emit_code("")
+
     return flatten
 
 def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}, outputs = None, preamble = "", file=None, input_keys = None, prefix = ""):
@@ -578,7 +629,7 @@ def generate_ccode(func, name=None, args=None, suffix = None, argument_specs ={}
             outputs = [("out", -1)]
 
     if callable(func):
-        name = func.__name__
+        name = func.__qualname__.replace(".", "_")
         annotations = inspect.getfullargspec(func).annotations
         args = [get_argument(n, argument_specs, annotations.get(n)) for n in inspect.getfullargspec(func).args]
 
@@ -708,6 +759,8 @@ def map_arg(arg):
         return list(map(map_arg, arg))
     elif isinstance(arg, tuple):
         return tuple(map(map_arg, arg))
+    elif isinstance(arg, WrapTuple):
+        return np.array([*arg])
     return arg
 
 def flat_values(a):
@@ -757,8 +810,8 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         feval = [ a.symengine_type() if hasattr(a, 'symengine_type') else a for a in values ]
 
     for name, jac_value in jac_of.items():
-        fname = func.__name__  + '_jac_' + name.strip('_')
-        if type(feval) == list or type(feval) == tuple:
+        fname = func.__qualname__.replace(".", "_")  + '_jac_' + name.strip('_')
+        if type(feval) == list or type(feval) == tuple or type(feval) == np.ndarray:
             feval = make_sympy(feval)
         this_jac = jacobian(feval, jac_value)
         if transpose:
@@ -770,12 +823,12 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         if jac_size == 1:
             continue
 
-        #emit_code("// Jacobian of", func.__name__, "wrt", jac_value)
+        #emit_code("// Jacobian of", func.__qualname__.replace(".", "_"), "wrt", jac_value)
         codegen(this_jac, fname, func_args, suffix=suffix, outputs=[('Hx', jac_shape, jac_value)], input_keys=keys,file=file, prefix=prefix)
 
         #jac_with_hx = this_jac.reshape(jac_size, 1).col_join(fxm.reshape(fx_size, 1))
 
-        #emit_code("// Full version Jacobian of", func.__name__, "wrt", jac_value)
+        #emit_code("// Full version Jacobian of", func.__qualname__.replace(".", "_"), "wrt", jac_value)
 
         fn_suffix = ""
         if suffix is not None:
@@ -784,9 +837,9 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         if keys is not None:
             continue
 
-        gen_call = f"{prefix}{func.__name__}{fn_suffix}(hx, {generate_args_string(func_args, True)});"
+        gen_call = f"{prefix}{func.__qualname__.replace('.', '_')}{fn_suffix}(hx, {generate_args_string(func_args, True)});"
         if len(fx) == 1:
-            gen_call = f"hx->data[0] = {prefix}{func.__name__}{fn_suffix}({generate_args_string(func_args, True)});"
+            gen_call = f"hx->data[0] = {prefix}{func.__qualname__.replace('.', '_')}{fn_suffix}({generate_args_string(func_args, True)});"
 
     #     preamble = f"""
     # if(Hx == 0) {{
@@ -810,7 +863,7 @@ def generate_jacobians(func, suffix=None,transpose=False,jac_all=False, jac_over
         }}
     }}""")
 
-        rtn['jacobian_of_' + name] = this_jac.reshape(*jac_shape)
+        rtn[name] = this_jac.reshape(*jac_shape)
     return rtn, func_args
 
 def can_generate_jacobian(f):
@@ -822,10 +875,10 @@ def can_generate_jacobian(f):
         return all(map(can_generate_jacobian, f))
     return True
 
-def generate_code_and_jacobians(f,transpose=False, jac_over=None, argument_specs = {}, file=None, prefix="", codegen=generate_ccode):
+def generate_code_and_jacobians(f,transpose=False, jac_all=False, jac_over=None, argument_specs = {}, file=None, prefix="", codegen=generate_ccode):
     f_eval = codegen(f, argument_specs = argument_specs, file=file, prefix=prefix)
     if can_generate_jacobian(f_eval):
-        return generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_over=jac_over, file=file, prefix=prefix, codegen=codegen)
+        return generate_jacobians(f, argument_specs = argument_specs, transpose=transpose, jac_all=jac_all, jac_over=jac_over, file=file, prefix=prefix, codegen=codegen)
     return None, None
 
 from pathlib import Path
@@ -834,13 +887,19 @@ generate_code_files = {}
 def get_pyx_file(fn):
     if not '--cnkalman-generate-source-pyx' in sys.argv:
         return None
+    global dirty_python_hack
+    dirty_python_hack = True
     if fn != sys.argv[0]:
         return None
     if fn in generate_code_files:
         return generate_code_files[fn]
     path = Path(fn)
-    print(f"Generating {path.parent.as_posix()}/{path.stem}_gen.pyx...", file=sys.stderr)
-    f = open(f"{path.parent.as_posix()}/{path.stem}_gen.pyx", 'w')
+    new_stem = f"{path.stem}_gen"
+    if path.stem == "__init__":
+        new_stem = f"gen"
+
+    print(f"Generating {path.parent.as_posix()}/{new_stem}.pyx...", file=sys.stderr)
+    f = open(f"{path.parent.as_posix()}/{new_stem}.pyx", 'w')
     f.write(
         """# NOTE: This is a generated file; do not edit.
 # cython: language_level=3
@@ -855,7 +914,7 @@ from libc cimport *
 
 """)
 
-    g = open(f"{path.parent.as_posix()}/{path.stem}_gen.pxd", 'w')
+    g = open(f"{path.parent.as_posix()}/{new_stem}.pxd", 'w')
     g.write(
         """# NOTE: This is a generated file; do not edit.
 # cython: language_level=3
@@ -874,7 +933,7 @@ def get_file(fn):
     if fn in generate_code_files:
         return generate_code_files[fn]
     path = Path(fn)
-    print(f"Generating {path.parent.as_posix()}/{path.stem}.gen.h...", file=sys.stderr)
+    logging.info(f"Generating {path.parent.as_posix()}/{path.stem}.gen.h...", file=sys.stderr)
     f = generate_code_files[fn] = open(f"{path.parent.as_posix()}/{path.stem}.gen.h", 'w')
     f.write(
     """/// NOTE: This is a generated file; do not edit.
@@ -910,27 +969,74 @@ def has_free_symbols(x):
         return len(x.free_symbols) > 0
     return False
 
+
+class LazyObject:
+    def __init__(self, f):
+        self.v = None
+        self.eval = False
+        self.f = f
+
+    def __call__(self):
+        if not self.eval:
+            self.v = self.f()
+        return self.v
+
+class Jacobians(object):
+    def __init__(self, func, prefix, kwargs):
+        self.func = func
+        self._jacs = None
+        self._args = None
+        self._evaled = False
+        self.prefix = prefix
+        self.kwargs = kwargs        
+        self.f = get_file(inspect.getfile(func))
+        if self.f is not None:
+            self.eval()
+            
+    def eval(self, reeval=False):
+        if self._evaled and not reeval:
+            return
+        self._evaled = True
+        func = self.func
+        f = self.f
+        def g(*args):
+            grtn = func(*args)
+            if type(grtn) == symengine.MutableDenseMatrix:
+                return grtn
+            if has_free_symbols(grtn):
+                return grtn
+            if isinstance(grtn, Iterable):
+                return np.array(grtn, dtype=np.float64)
+            return grtn
+
+        is_pyx = isinstance(f, tuple)
+        jacs, args = generate_code_and_jacobians(func, argument_specs=self.kwargs, jac_all=self.kwargs.get('_all', False),
+                                                 file=f, prefix=self.prefix, codegen = generate_pyxcode if is_pyx else generate_ccode)
+        self._jacs = jacs
+        self._args = args
+
+        if jacs is not None:
+            for k, v in jacs.items():
+                setattr(self, k, functionify(args, v))
+
+    def __getattr__(self, item):
+        self.eval()
+        return super().__getattribute__(item)
+
 def generate_code(prefix="", **kwargs):
     def f(func):
-        try:
-            f = get_file(inspect.getfile(func))
+        try:            
             def g(*args):
                 grtn = func(*args)
                 if type(grtn) == symengine.MutableDenseMatrix:
                     return grtn
-                if has_free_symbols(grtn):
-                    return grtn
-                if isinstance(grtn, Iterable):
+                if isinstance(grtn, Iterable) and not has_free_symbols(grtn):
                     return np.array(grtn, dtype=np.float64)
                 return grtn
-
-            is_pyx = isinstance(f, tuple)
-            jacs, args = generate_code_and_jacobians(func, argument_specs=kwargs, file=f, prefix=prefix, codegen = generate_pyxcode if is_pyx else generate_ccode)
-            if jacs is not None:
-                for k, v in jacs.items():
-                    setattr(g, k, functionify(args, v))
-            return g
+            g.jacobians = Jacobians(func, prefix, kwargs)
+            return g        
         except Exception as e:
-            print(f"Could not generate source level jacobians: {e}")
+            logging.warning(f"Could not generate source level jacobian for {func.__qualname__}: {e}")
+            raise e
             return func
     return f
