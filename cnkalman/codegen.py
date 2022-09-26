@@ -1033,10 +1033,13 @@ def generate_code(prefix="", **kwargs):
                 if isinstance(grtn, Iterable) and not has_free_symbols(grtn):
                     return np.array(grtn, dtype=np.float64)
                 return grtn
-            g.jacobians = Jacobians(func, prefix, kwargs)
+            try:
+                g.jacobians = Jacobians(func, prefix, kwargs)
+            except TypeError:
+                # This happens if it is compiled code
+                pass
             return g        
         except Exception as e:
             logging.warning(f"Could not generate source level jacobian for {func.__qualname__}: {e}")
-            raise e
             return func
     return f
