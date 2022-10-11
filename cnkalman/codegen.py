@@ -7,13 +7,38 @@ from collections.abc import Iterable
 
 import symengine.lib.symengine_wrapper
 import sympy
+import sys
 
 from symengine import cse
-from symengine import atan2, sqrt, cos, sin, Matrix, Pow, Mul, asin, Symbol, symbols, Abs, tan
+#from symengine import atan2, sqrt, cos, sin, Matrix, Pow, Mul, asin, Symbol, symbols, Abs, tan, acos
+from symengine import Matrix, Mul, Symbol, symbols
 
 import logging
+import os
 
+use_symbolic_eval = False
 dirty_python_hack = False
+
+function_expose_list = [(symengine.atan2, math.atan2),
+                        (symengine.sqrt, math.sqrt),
+                        (symengine.cos, math.cos),
+                        (symengine.sin, math.sin),
+                        (symengine.Pow, math.pow),
+                        (symengine.asin, math.asin),
+                        (symengine.Abs, abs),
+                        (symengine.tan, math.tan),
+                        (symengine.acos, math.acos),
+                        ]
+
+for sym_f, f in function_expose_list:
+    current_module = sys.modules[__name__]
+
+    def capture(sym_f, f):
+        def eval_f(*args, **kwargs):
+            global use_symbolic_eval
+            return sym_f(*args, **kwargs) if use_symbolic_eval else f(*args, **kwargs)
+        return eval_f
+    setattr(current_module, f.__name__, capture(sym_f, f))
 
 def isinstance_namedtuple(obj) -> bool:
     return (
@@ -120,7 +145,7 @@ def code_wrapper(formatter, item, depth = 0):
         symengine.StrictLessThan: '<'
     }
 
-    if item.__class__ == Pow:
+    if item.__class__ == symengine.Pow:
         # Basically it's always faster to never call pow
         if item.args[1].is_Number and abs(item.args[1]) < 20:
             invert = item.args[1] < 0
@@ -138,7 +163,7 @@ def code_wrapper(formatter, item, depth = 0):
                     v = "(1. / " + v + ")"
                 return v
         return "pow(%s, %s)" % tuple(newargs)
-    elif item.__class__ is Abs:
+    elif item.__class__ is symengine.Abs:
         return f"fabs({newargs[0]})"
     elif item.__class__ in infixes:
         return "(" + (" " + infixes[item.__class__] + " ").join(newargs) + ")"
@@ -149,11 +174,11 @@ def code_wrapper(formatter, item, depth = 0):
             return newargs[2]
         return formatter.format_ternary(newargs[1], newargs[0], newargs[2])
     elif isinstance(item, symengine.Derivative):
-        if item.args[0] == Abs(item.args[1]):
+        if item.args[0] == symengine.Abs(item.args[1]):
             return formatter.format_ternary(item.args[1] > 0, 1, -1, note="Note: Maybe not valid for == 0")
             #return "((%s) > 0 ? 1 : -1) /* Note: Maybe not valid for == 0 */" % (item.args[1])
 
-    known_c_funcs = [ 'asin', 'cos', 'sin', 'atan2', 'tan', 'atan']
+    known_c_funcs = [ 'asin', 'cos', 'sin', 'atan2', 'tan', 'atan', 'acos']
     if item.__class__.__name__ not in known_c_funcs:
         print("Warning: Unhandled type " + item.__class__.__name__, file=sys.stderr)
     return item.__class__.__name__ + "(" + ", ".join(map(clean_parens, newargs)) + ")"
@@ -598,11 +623,31 @@ def generate_pyxcode(func, name=None, args=None, suffix = None, argument_specs =
 
     emit_code("cpdef void %s%s(%s, %s): " % (prefix,
                                                   func_name,
-                                                  ", ".join([f"{type_name} " + s[0] for s in outputs]),
+                                             ", ".join([f"{type_name} " + s[0] for s in outputs]),
                                                   ", ".join(map(arg_str_py, enumerate(args)))
                                                   ))
     call_args = ",".join([s[0] for s in outputs]) + ", " + generate_args_string(args, as_call=True)
     emit_code(f"\t{prefix}{func_name}_nogil({call_args})")
+    emit_code("")
+
+    if current_shape:
+        emit_header("cpdef np.ndarray %s%s_allocate(%s) " % (prefix,
+                                                  func_name,
+                                                  ", ".join(map(arg_str_py, enumerate(args)))
+                                                  ))
+
+        emit_code("cpdef np.ndarray %s%s_allocate(%s): " % (prefix,
+                                                 func_name,
+                                                 ", ".join(map(arg_str_py, enumerate(args)))
+                                                 ))
+        emit_code(
+            f"\tcdef np.ndarray[float, ndim=2] {outputs[0][0]} = np.zeros(({abs(current_shape[0])},{current_shape[1]}), dtype=np.float32)")
+        call_args = ",".join([s[0] for s in outputs]) + ", " + generate_args_string(args, as_call=True)
+        emit_code(f"\t{prefix}{func_name}_nogil({call_args})")
+        if current_shape[1] == 1:
+            emit_code(f"\treturn {', '.join([s[0] for s in outputs])}.reshape(-1)")
+        else:
+            emit_code(f"\treturn {', '.join([s[0] for s in outputs])}")
 
     emit_header("cpdef void %s%s(%s, %s)" % (prefix,
                                              func_name,
@@ -883,13 +928,20 @@ def generate_code_and_jacobians(f,transpose=False, jac_all=False, jac_over=None,
 
 from pathlib import Path
 
+codegen_enable_generate_pyx = False
+def enable_generate_pyx():
+    global codegen_enable_generate_pyx
+    codegen_enable_generate_pyx = True
+
 generate_code_files = {}
 def get_pyx_file(fn):
-    if not '--cnkalman-generate-source-pyx' in sys.argv:
+    global codegen_enable_generate_pyx
+    force_generate = '--cnkalman-generate-source-pyx' in sys.argv
+    if not codegen_enable_generate_pyx and not force_generate:
         return None
     global dirty_python_hack
     dirty_python_hack = True
-    if fn != sys.argv[0]:
+    if fn != sys.argv[0] and not codegen_enable_generate_pyx:
         return None
     if fn in generate_code_files:
         return generate_code_files[fn]
@@ -897,6 +949,13 @@ def get_pyx_file(fn):
     new_stem = f"{path.stem}_gen"
     if path.stem == "__init__":
         new_stem = f"gen"
+
+    full_path = f'{path.parent.as_posix()}/{new_stem}.pyx'
+    if os.path.exists(full_path):
+        if not force_generate and \
+                os.path.getmtime(full_path) > os.path.getmtime(fn) and \
+                os.path.getmtime(f'{path.parent.as_posix()}/{new_stem}.pxd') > os.path.getmtime(fn):
+            return None
 
     print(f"Generating {path.parent.as_posix()}/{new_stem}.pyx...", file=sys.stderr)
     f = open(f"{path.parent.as_posix()}/{new_stem}.pyx", 'w')
@@ -962,6 +1021,11 @@ def functionify(args_info, jac):
 def expand_hint(v, length):
     return [v[a] for a in range(length)]
 
+def nan_if_complex(x):
+    if hasattr(x , 'is_real') and x.is_real == False:
+        return np.nan
+    return float(x)
+
 def has_free_symbols(x):
     if isinstance(x, Iterable):
         return any([has_free_symbols(y) for y in x])
@@ -999,19 +1063,13 @@ class Jacobians(object):
         self._evaled = True
         func = self.func
         f = self.f
-        def g(*args):
-            grtn = func(*args)
-            if type(grtn) == symengine.MutableDenseMatrix:
-                return grtn
-            if has_free_symbols(grtn):
-                return grtn
-            if isinstance(grtn, Iterable):
-                return np.array(grtn, dtype=np.float64)
-            return grtn
 
+        global use_symbolic_eval
+        use_symbolic_eval = True
         is_pyx = isinstance(f, tuple)
         jacs, args = generate_code_and_jacobians(func, argument_specs=self.kwargs, jac_all=self.kwargs.get('_all', False),
                                                  file=f, prefix=self.prefix, codegen = generate_pyxcode if is_pyx else generate_ccode)
+        use_symbolic_eval = False
         self._jacs = jacs
         self._args = args
 
@@ -1026,16 +1084,16 @@ class Jacobians(object):
 def generate_code(prefix="", **kwargs):
     def f(func):
         try:            
-            def g(*args):
-                grtn = func(*args)
+            def g(*args, **g_kwargs):
+                grtn = func(*args, **g_kwargs)
                 if type(grtn) == symengine.MutableDenseMatrix:
                     return grtn
                 if isinstance(grtn, Iterable) and not has_free_symbols(grtn):
-                    return np.array(grtn, dtype=np.float64)
+                    return np.array([nan_if_complex(x) for x in grtn], dtype=np.float64)
                 return grtn
             try:
                 g.jacobians = Jacobians(func, prefix, kwargs)
-            except TypeError:
+            except TypeError as e:
                 # This happens if it is compiled code
                 pass
             return g        
