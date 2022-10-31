@@ -33,6 +33,7 @@ else()
 endif()
 
 add_subdirectory(libs/cnmatrix)
+add_subdirectory(libs/pybind11)
 add_subdirectory(src)
 
 set(cnkalman_root_source_dir ${CMAKE_CURRENT_SOURCE_DIR} CACHE INTERNAL "")

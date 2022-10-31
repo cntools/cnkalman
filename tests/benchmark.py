@@ -111,14 +111,14 @@ def run_model(kp, f):
                 (f.x[0], f.x[1]), cov=f.P[0:2, 0:2],
                 std=1, facecolor='g', alpha=0.8)
 
-
+    Xs = np.array(Xs)
     err = np.linalg.norm(Xf - Xs.reshape(Xf.shape)) / Xf.shape[0]
     print(err, math.sqrt(pError) / Xf.shape[0])
 
     has_error = math.sqrt(pError) / Xf.shape[0] > 1e-3 or err > 1e-3
 
 
-    return np.array(Xs)
+    return Xs
 
 f = create_filter(model)
 Xs = run_model(kp, f)

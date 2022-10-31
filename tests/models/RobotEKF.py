@@ -92,7 +92,7 @@ class RobotEKF(EKF):
             return BikeLandmarks.meas_function(x.reshape(-1), landmark_pos).reshape(-1,1)
 
         def H_of(x, landmark_pos):
-            return BikeLandmarks.meas_function.jacobian_of_state(x.reshape(-1), landmark_pos)
+            return BikeLandmarks.meas_function.jacobians.state(x.reshape(-1), landmark_pos)
         landmark = self.landmarks[landmark_idx]
 
         EKF.update(self, z, HJacobian=H_of, Hx=Hx, R=R,

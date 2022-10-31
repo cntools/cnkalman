@@ -27,5 +27,5 @@ class BearingsOnlyTracking(EKF):
             return y
 
         EKF.update(self, z,
-                   HJacobian=lambda x: bearings_meas_function.jacobian_of_state(x.reshape(-1), self.landmarks[idx]), residual=residual,
+                   HJacobian=lambda x: bearings_meas_function.jacobians.state(x.reshape(-1), self.landmarks[idx]), residual=residual,
                    Hx=lambda x: np.array(bearings_meas_function(x.reshape(-1), self.landmarks[idx]), dtype=np.float64).reshape(-1, 1), R=R)

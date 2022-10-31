@@ -37,5 +37,5 @@ class EggLandscape(EKF):
 
     def update(self, z, R):
         EKF.update(self, z,
-                   HJacobian=lambda x: predict_meas.jacobian_of_x(x.reshape(-1)),
+                   HJacobian=lambda x: predict_meas.jacobians.x(x.reshape(-1)),
                    Hx=lambda x: np.array(predict_meas(x.reshape(-1)), dtype=np.float64).reshape(-1, 1), R=R)

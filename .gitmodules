@@ -1,3 +1,6 @@
 [submodule "libs/cnmatrix"]
 	path = libs/cnmatrix
 	url = ../cnmatrix.git
+[submodule "libs/pybind11"]
+	path = libs/pybind11
+	url = git@github.com:pybind/pybind11.git

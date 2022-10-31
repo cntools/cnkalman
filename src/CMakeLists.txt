@@ -10,9 +10,6 @@ target_link_libraries(cnkalman cnmatrix)
 
 install(TARGETS cnkalman DESTINATION lib)
 
-find_package(pybind11)
-if(pybind11_FOUND)
-    pybind11_add_module(filter cnkalman_python_bindings.cpp)
-    target_link_libraries(filter PUBLIC cnkalman)
-    install(TARGETS filter DESTINATION lib)
-endif()
+pybind11_add_module(filter cnkalman_python_bindings.cpp)
+target_link_libraries(filter PUBLIC cnkalman)
+install(TARGETS filter DESTINATION lib)
