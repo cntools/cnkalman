@@ -17,10 +17,10 @@ static inline CnMat from_py_array(py::array_t<double> b) {
         throw std::runtime_error("Incompatible format: expected a double array!");
 
     return CnMat {
-            .step = static_cast<int>(info.strides[0] / sizeof(double)),
-            .data = static_cast<double *>(info.ptr),
-            .rows = static_cast<int>(info.shape[0]),
-            .cols = static_cast<int>(info.ndim == 2 ? info.shape[1] : 1)
+            static_cast<int>(info.strides[0] / sizeof(double)),
+            static_cast<double *>(info.ptr),
+            static_cast<int>(info.shape[0]),
+            static_cast<int>(info.ndim == 2 ? info.shape[1] : 1)
     };
 }
 
@@ -31,8 +31,8 @@ static inline py::buffer_info to_py_array_buffer(CnMat& m) {
                 sizeof(double),                          /* Size of one scalar */
                 py::format_descriptor<double>::format(), /* Python struct-style format descriptor */
                 1,                                      /* Number of dimensions */
-                { (ssize_t)m.rows },                 /* Buffer dimensions */
-                { (ssize_t)(m.step * sizeof(double)) }
+                { (Py_ssize_t)m.rows },                 /* Buffer dimensions */
+                { (Py_ssize_t)(m.step * sizeof(double)) }
         );
     }
     return py::buffer_info(
@@ -40,9 +40,9 @@ static inline py::buffer_info to_py_array_buffer(CnMat& m) {
             sizeof(double),                          /* Size of one scalar */
             py::format_descriptor<double>::format(), /* Python struct-style format descriptor */
             2,                                      /* Number of dimensions */
-            { (ssize_t)m.rows, (ssize_t)m.cols },                 /* Buffer dimensions */
-            { (ssize_t)(m.step * sizeof(double)),             /* Strides (in bytes) for each index */
-              (ssize_t)sizeof(double ) }
+            { (Py_ssize_t)m.rows, (Py_ssize_t)m.cols },                 /* Buffer dimensions */
+            { (Py_ssize_t)(m.step * sizeof(double)),             /* Strides (in bytes) for each index */
+              (Py_ssize_t)sizeof(double ) }
     );
 }
 
@@ -53,8 +53,8 @@ static inline py::buffer_info to_py_array_buffer(const CnMat& m) {
                 sizeof(double),                          /* Size of one scalar */
                 py::format_descriptor<double>::format(), /* Python struct-style format descriptor */
                 1,                                      /* Number of dimensions */
-                { (ssize_t)m.rows },                 /* Buffer dimensions */
-                { (ssize_t)(m.step * sizeof(double)) },
+                { (Py_ssize_t)m.rows },                 /* Buffer dimensions */
+                { (Py_ssize_t)(m.step * sizeof(double)) },
                 true
         );
     }
@@ -63,9 +63,9 @@ static inline py::buffer_info to_py_array_buffer(const CnMat& m) {
             sizeof(double),                          /* Size of one scalar */
             py::format_descriptor<double>::format(), /* Python struct-style format descriptor */
             2,                                      /* Number of dimensions */
-            { (ssize_t)m.rows, (ssize_t)m.cols },                 /* Buffer dimensions */
-            { (ssize_t)(m.step * sizeof(double)),             /* Strides (in bytes) for each index */
-              (ssize_t)sizeof(double ) },
+            { (Py_ssize_t)m.rows, (Py_ssize_t)m.cols },                 /* Buffer dimensions */
+            { (Py_ssize_t)(m.step * sizeof(double)),             /* Strides (in bytes) for each index */
+              (Py_ssize_t)sizeof(double ) },
               true
     );
 }
@@ -207,12 +207,12 @@ PYBIND11_MODULE(filter, m) {
 
     py::class_<term_criteria_t>(m, "term_criteria_t")
             .def(py::init([](int max_iterations, double minimum_step, double xtol, double mtol, double max_error){
-                return (term_criteria_t) {
-                    .max_iterations = max_iterations,
-                    .minimum_step = minimum_step,
-                    .xtol = xtol,
-                    .mtol = mtol,
-                    .max_error = max_error
+                return term_criteria_t {
+                    max_iterations,
+                    minimum_step,
+                    xtol,
+                    mtol,
+                    max_error
                 };
             }), "max_iterations"_a = 0, "minimum_step"_a=0, "xtol"_a=0, "mtol"_a=0, "max_error"_a=0)
             .def_readwrite("max_error", &term_criteria_t::max_error)

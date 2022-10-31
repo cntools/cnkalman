@@ -43,7 +43,6 @@ class build_ext(build_ext_orig):
         # example of build args
         build_args = [
             '--config', config,
-            '--', '-j4'
         ]
 
         build_temp_dir = str(build_temp.absolute())
