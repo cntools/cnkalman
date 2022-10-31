@@ -53,7 +53,7 @@ struct BearingAccel : public cnkalman::KalmanModel {
 
 		LandmarkMeasurement(cnkalman::KalmanModel *kalmanModel, const BearingAccelLandmark& a, const BearingAccelLandmark& b)
 		: KalmanMeasurementModel(kalmanModel, "Landmark", 1), a(a), b(b) {
-
+            //this->meas_mdl.meas_jacobian_mode = cnkalman_jacobian_mode_debug;
 		}
 
 		bool predict_measurement(const CnMat &x_t, CnMat *pz, CnMat *h) override {

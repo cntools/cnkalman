@@ -5,6 +5,7 @@ namespace cnkalman {
     bool KalmanMeasurementModel::residual(const CnMat& Z, const CnMat& x_t, CnMat* y, CnMat* H_k) {
         CN_CREATE_STACK_VEC(pz, Z.rows);
         auto rtn = predict_measurement(x_t, &pz, H_k);
+        //cn_elementwise_subtract(y, &pz, &Z);
         cn_elementwise_subtract(y, &Z, &pz);
         return rtn;
     }

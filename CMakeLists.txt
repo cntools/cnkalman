@@ -10,6 +10,10 @@ set(CMAKE_CXX_STANDARD 17)
 
 option(USE_ASAN "Use address sanitizer" OFF)
 
+if(NOT PYTHON_EXECUTABLE)
+  find_package (Python 3.8 COMPONENTS Interpreter Development REQUIRED)
+endif()
+
 if(UNIX)
   add_compile_options(-fPIC -Wall -Wno-unused-variable -Wno-switch -Wno-parentheses -Wno-missing-braces -Werror=return-type -fvisibility=hidden -Werror=vla -fno-math-errno -Werror=pointer-arith)
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${SHARED_FLAGS} -std=gnu99 -Werror=incompatible-pointer-types -Werror=implicit-function-declaration -Werror=missing-field-initializers ")

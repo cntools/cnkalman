@@ -1,7 +1,8 @@
 /// NOTE: This is a generated file; do not edit.
 #pragma once
 #include <cnkalman/generated_header.h>
-// clang-format off    
+
+// clang-format off
 static inline void predict_function(CnMat* out, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
@@ -16,7 +17,6 @@ static inline void predict_function(CnMat* out, const FLT dt, const FLT wheelbas
 	cnMatrixOptionalSet(out, 2, 0, x1);
 }
 
-// Jacobian of predict_function wrt [dt]
 static inline void predict_function_jac_dt(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
@@ -28,17 +28,15 @@ static inline void predict_function_jac_dt(CnMat* Hx, const FLT dt, const FLT wh
 	cnMatrixOptionalSet(Hx, 2, 0, x0);
 }
 
-// Full version Jacobian of predict_function wrt [dt]
 
-static inline void predict_function_jac_dt_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-    if(hx != 0) { 
-        predict_function(hx, dt, wheelbase, state, u);
+    static inline void predict_function_jac_dt_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+        if(hx != 0) { 
+            predict_function(hx, dt, wheelbase, state, u);
+        }
+        if(Hx != 0) { 
+            predict_function_jac_dt(Hx, dt, wheelbase, state, u);
+        }
     }
-    if(Hx != 0) { 
-        predict_function_jac_dt(Hx, dt, wheelbase, state, u);
-    }
-}
-// Jacobian of predict_function wrt [wheelbase]
 static inline void predict_function_jac_wheelbase(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
@@ -55,17 +53,15 @@ static inline void predict_function_jac_wheelbase(CnMat* Hx, const FLT dt, const
 	cnMatrixOptionalSet(Hx, 2, 0, -1 * x0 * x2 * (1. / (wheelbase * wheelbase)));
 }
 
-// Full version Jacobian of predict_function wrt [wheelbase]
 
-static inline void predict_function_jac_wheelbase_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-    if(hx != 0) { 
-        predict_function(hx, dt, wheelbase, state, u);
+    static inline void predict_function_jac_wheelbase_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+        if(hx != 0) { 
+            predict_function(hx, dt, wheelbase, state, u);
+        }
+        if(Hx != 0) { 
+            predict_function_jac_wheelbase(Hx, dt, wheelbase, state, u);
+        }
     }
-    if(Hx != 0) { 
-        predict_function_jac_wheelbase(Hx, dt, wheelbase, state, u);
-    }
-}
-// Jacobian of predict_function wrt [state0, state1, state2]
 static inline void predict_function_jac_state(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
@@ -81,17 +77,15 @@ static inline void predict_function_jac_state(CnMat* Hx, const FLT dt, const FLT
 	cnMatrixOptionalSet(Hx, 2, 2, 1);
 }
 
-// Full version Jacobian of predict_function wrt [state0, state1, state2]
 
-static inline void predict_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-    if(hx != 0) { 
-        predict_function(hx, dt, wheelbase, state, u);
+    static inline void predict_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+        if(hx != 0) { 
+            predict_function(hx, dt, wheelbase, state, u);
+        }
+        if(Hx != 0) { 
+            predict_function_jac_state(Hx, dt, wheelbase, state, u);
+        }
     }
-    if(Hx != 0) { 
-        predict_function_jac_state(Hx, dt, wheelbase, state, u);
-    }
-}
-// Jacobian of predict_function wrt [u0, u1]
 static inline void predict_function_jac_u(CnMat* Hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
 	const FLT state2 = state[2];
 	const FLT u0 = u[0];
@@ -117,16 +111,15 @@ static inline void predict_function_jac_u(CnMat* Hx, const FLT dt, const FLT whe
 	cnMatrixOptionalSet(Hx, 2, 1, x1 * x9);
 }
 
-// Full version Jacobian of predict_function wrt [u0, u1]
 
-static inline void predict_function_jac_u_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
-    if(hx != 0) { 
-        predict_function(hx, dt, wheelbase, state, u);
+    static inline void predict_function_jac_u_with_hx(CnMat* Hx, CnMat* hx, const FLT dt, const FLT wheelbase, const FLT* state, const FLT* u) {
+        if(hx != 0) { 
+            predict_function(hx, dt, wheelbase, state, u);
+        }
+        if(Hx != 0) { 
+            predict_function_jac_u(Hx, dt, wheelbase, state, u);
+        }
     }
-    if(Hx != 0) { 
-        predict_function_jac_u(Hx, dt, wheelbase, state, u);
-    }
-}
 static inline void meas_function(CnMat* out, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
@@ -139,7 +132,6 @@ static inline void meas_function(CnMat* out, const FLT* state, const FLT* landma
 	cnMatrixOptionalSet(out, 1, 0, atan2(x0, x1) + (-1 * state2));
 }
 
-// Jacobian of meas_function wrt [state0, state1, state2]
 static inline void meas_function_jac_state(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
@@ -158,17 +150,15 @@ static inline void meas_function_jac_state(CnMat* Hx, const FLT* state, const FL
 	cnMatrixOptionalSet(Hx, 1, 2, -1);
 }
 
-// Full version Jacobian of meas_function wrt [state0, state1, state2]
 
-static inline void meas_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
-    if(hx != 0) { 
-        meas_function(hx, state, landmark);
+    static inline void meas_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
+        if(hx != 0) { 
+            meas_function(hx, state, landmark);
+        }
+        if(Hx != 0) { 
+            meas_function_jac_state(Hx, state, landmark);
+        }
     }
-    if(Hx != 0) { 
-        meas_function_jac_state(Hx, state, landmark);
-    }
-}
-// Jacobian of meas_function wrt [landmark0, landmark1]
 static inline void meas_function_jac_landmark(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
@@ -185,13 +175,12 @@ static inline void meas_function_jac_landmark(CnMat* Hx, const FLT* state, const
 	cnMatrixOptionalSet(Hx, 1, 1, x1 * x4);
 }
 
-// Full version Jacobian of meas_function wrt [landmark0, landmark1]
 
-static inline void meas_function_jac_landmark_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
-    if(hx != 0) { 
-        meas_function(hx, state, landmark);
+    static inline void meas_function_jac_landmark_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
+        if(hx != 0) { 
+            meas_function(hx, state, landmark);
+        }
+        if(Hx != 0) { 
+            meas_function_jac_landmark(Hx, state, landmark);
+        }
     }
-    if(Hx != 0) { 
-        meas_function_jac_landmark(Hx, state, landmark);
-    }
-}

@@ -35,7 +35,7 @@ jobs:
 
       - name: Build wheel
         run: |
-          python -m build
+          python -m build --wheel
           git status
   
       - uses: actions/upload-artifact@v2

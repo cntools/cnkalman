@@ -15,8 +15,24 @@ namespace cnkalman {
         cnkalman_meas_model meas_mdl = {};
 
         KalmanMeasurementModel(KalmanModel* kalmanModel, const std::string& name, size_t meas_cnt);
+        KalmanMeasurementModel(KalmanModel* kalmanModel, size_t meas_cnt) : KalmanMeasurementModel(kalmanModel, "meas", meas_cnt) {}
         virtual ~KalmanMeasurementModel() = default;
+
+        /***
+         * @param x current state
+         * @param z measurement prediction
+         * @param h measurement jacobian wrt x
+         * @return Whether the residual / jacobian is valid
+         */
         virtual bool predict_measurement(const CnMat& x, CnMat* z, CnMat* h) = 0;
+
+        /***
+         * @param Z observed measurement
+         * @param x current state
+         * @param z measurement prediction
+         * @param h measurement jacobian wrt x
+         * @return Whether the residual / jacobian is valid
+         */
         virtual bool residual(const CnMat& Z, const CnMat& x, CnMat* y, CnMat* h);
 
         cnkalman_update_extended_stats_t update(FLT t, const struct CnMat& Z, CnMat& R);
@@ -47,6 +63,7 @@ namespace cnkalman {
         virtual std::ostream& write(std::ostream&) const;
 
         KalmanModel(const std::string& name, size_t state_cnt);
+        KalmanModel(size_t state_cnt) : KalmanModel("mdl", state_cnt) {}
         virtual void reset();
         virtual ~KalmanModel();
 
@@ -68,6 +85,7 @@ namespace cnkalman {
     struct CN_EXPORT_CLASS KalmanLinearPredictionModel : public KalmanModel {
         virtual const CnMat& F() const = 0;
         KalmanLinearPredictionModel(const std::string &name, size_t stateCnt);
+        KalmanLinearPredictionModel(size_t stateCnt) : KalmanLinearPredictionModel("mdl", stateCnt) {}
         void predict(FLT dt, const CnMat& x0, CnMat* x1, CnMat* cF) override;
     };
 
@@ -75,6 +93,7 @@ namespace cnkalman {
         CnMat H;
 
         KalmanLinearMeasurementModel(KalmanModel* kalmanModel, const std::string& name, const CnMat& H);
+        KalmanLinearMeasurementModel(KalmanModel* kalmanModel, const CnMat& H) : KalmanLinearMeasurementModel(kalmanModel, "meas", H) {}
         ~KalmanLinearMeasurementModel() override;
         bool predict_measurement(const CnMat &x, CnMat *z, CnMat *h) override;
     };

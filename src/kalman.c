@@ -456,7 +456,6 @@ static bool numeric_jacobian_meas_fn(void * user, const struct CnMat *x, struct 
 
 static inline bool compare_jacobs(const char* label, const CnMat *H, const CnMat *H_calc, const CnMat *y, const CnMat *Z) {
 	bool needsPrint = true;
-	fprintf(stderr, "FJAC DEBUG BEGIN %s %2dx%2d\n", label, H->rows, H->cols);
 
     for (int j = 0; j < H->cols; j++) {
 		if(!needsPrint) {

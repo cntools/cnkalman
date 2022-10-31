@@ -1,7 +1,8 @@
 /// NOTE: This is a generated file; do not edit.
 #pragma once
 #include <cnkalman/generated_header.h>
-// clang-format off    
+
+// clang-format off
 static inline FLT bearings_meas_function(const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
@@ -10,7 +11,6 @@ static inline FLT bearings_meas_function(const FLT* state, const FLT* landmark) 
 	return atan2(state1 + (-1 * landmark1), state0 + (-1 * landmark0));
 }
 
-// Jacobian of bearings_meas_function wrt [state0, state1]
 static inline void bearings_meas_function_jac_state(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
@@ -23,17 +23,15 @@ static inline void bearings_meas_function_jac_state(CnMat* Hx, const FLT* state,
 	cnMatrixOptionalSet(Hx, 0, 1, x2 * x1);
 }
 
-// Full version Jacobian of bearings_meas_function wrt [state0, state1]
 
-static inline void bearings_meas_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
-    if(hx != 0) { 
-        hx->data[0] = bearings_meas_function(state, landmark);
+    static inline void bearings_meas_function_jac_state_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
+        if(hx != 0) { 
+            hx->data[0] = bearings_meas_function(state, landmark);
+        }
+        if(Hx != 0) { 
+            bearings_meas_function_jac_state(Hx, state, landmark);
+        }
     }
-    if(Hx != 0) { 
-        bearings_meas_function_jac_state(Hx, state, landmark);
-    }
-}
-// Jacobian of bearings_meas_function wrt [landmark0, landmark1]
 static inline void bearings_meas_function_jac_landmark(CnMat* Hx, const FLT* state, const FLT* landmark) {
 	const FLT state0 = state[0];
 	const FLT state1 = state[1];
@@ -46,13 +44,12 @@ static inline void bearings_meas_function_jac_landmark(CnMat* Hx, const FLT* sta
 	cnMatrixOptionalSet(Hx, 0, 1, -1 * x2 * x1);
 }
 
-// Full version Jacobian of bearings_meas_function wrt [landmark0, landmark1]
 
-static inline void bearings_meas_function_jac_landmark_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
-    if(hx != 0) { 
-        hx->data[0] = bearings_meas_function(state, landmark);
+    static inline void bearings_meas_function_jac_landmark_with_hx(CnMat* Hx, CnMat* hx, const FLT* state, const FLT* landmark) {
+        if(hx != 0) { 
+            hx->data[0] = bearings_meas_function(state, landmark);
+        }
+        if(Hx != 0) { 
+            bearings_meas_function_jac_landmark(Hx, state, landmark);
+        }
     }
-    if(Hx != 0) { 
-        bearings_meas_function_jac_landmark(Hx, state, landmark);
-    }
-}
